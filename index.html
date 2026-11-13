@@ -4,46 +4,87 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hotte Surprise</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Mountains+of+Christmas:wght@700&family=Nunito:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#fbf7f2; --card:#ffffff; --ink:#2b2522; --muted:#7a6f69; --line:#e8dfd6;
-  --red:#b3261e; --red-ink:#fff; --green:#1f6f4a; --soft:#f6efe7;
+  --bg1:#0e2a47; --bg2:#123d2e; --card:#fffaf3; --ink:#2b2522; --muted:#7a6f69; --line:#eadfce;
+  --red:#c62828; --red2:#e53935; --red-ink:#fff; --green:#1b7a4b; --gold:#f4b400; --soft:#f6ecdc; --field:#ffffff;
 }
 @media (prefers-color-scheme: dark){
-  :root{ --bg:#1b1715; --card:#25201d; --ink:#f3ece6; --muted:#a99d95; --line:#3a332e;
-    --red:#e0574d; --red-ink:#1b1715; --green:#5fc093; --soft:#2d2723; }
+  :root{ --card:#1f2a33; --ink:#f3ece6; --muted:#a9b3bb; --line:#33424e; --soft:#2a3742; --field:#17212a; }
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
-main{max-width:640px;margin:0 auto;padding:32px 16px 64px}
-h1{font-size:2rem;margin:0 0 4px;letter-spacing:-.02em}
-h1 span{color:var(--red)}
-.sub{color:var(--muted);margin:0 0 28px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:16px}
-.card h2{font-size:1.05rem;margin:0 0 12px}
+html{background:var(--bg2)}
+body{margin:0;min-height:100vh;color:var(--ink);font:16px/1.5 "Nunito",system-ui,sans-serif;
+  background:radial-gradient(ellipse 120% 70% at top,#1d4f7a 0%,var(--bg1) 50%,var(--bg2) 100%);}
+#snow{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden}
+.flake{position:absolute;top:-10px;color:#fff;opacity:.85;animation:fall linear infinite;user-select:none}
+@keyframes fall{to{transform:translate(var(--drift),105vh) rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){.flake{display:none}}
+main{position:relative;z-index:1;max-width:640px;margin:0 auto;padding:36px 16px 64px}
+.hero{display:block;max-height:280px;object-fit:cover;width:100%;border-radius:18px;margin-bottom:18px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.title{text-align:center;color:#fff;margin-bottom:26px}
+h1{font-family:"Mountains of Christmas",cursive;font-size:3.2rem;line-height:1.1;margin:0;text-shadow:0 3px 0 rgba(0,0,0,.25)}
+h1 span{color:var(--gold)}
+.scene{display:block;width:100%;height:auto;margin:0 auto 10px;max-width:520px;clip-path:inset(0 round 0 0 22px 22px)}
+.scene .star,.scene .stars circle{animation:twinkle 2.4s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
+.scene .stars circle:nth-child(2n){animation-delay:1.2s}
+@keyframes twinkle{50%{opacity:.55;transform:scale(.96)}}
+.sub{color:#dbe7f0;margin:6px 0 0}
+.card{background:var(--card);border-radius:18px;padding:20px;margin-bottom:16px;
+  box-shadow:0 8px 24px rgba(0,0,0,.25);border-top:6px solid var(--red)}
+body:not(.ready) .card{animation:pop .5s both}
+.card:nth-of-type(2){border-top-color:var(--green)} .card:nth-of-type(3){border-top-color:var(--gold)}
+@keyframes pop{from{opacity:0;transform:translateY(14px)}}
+.card h2{font-size:1.1rem;margin:0 0 12px;font-weight:800}
 label{display:block;font-size:.85rem;color:var(--muted);margin:10px 0 4px}
-input,select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font:inherit}
+input,select{width:100%;padding:10px 12px;border:2px solid var(--line);border-radius:12px;background:var(--field);color:var(--ink);font:inherit;transition:border-color .2s}
+input:focus,select:focus{outline:none;border-color:var(--green)}
 .row{display:flex;gap:8px}
 .row>*{flex:1;min-width:0}
 .row button{flex:0 0 auto}
-button{font:inherit;border:0;border-radius:10px;padding:10px 16px;cursor:pointer;background:var(--soft);color:var(--ink)}
-button.primary{background:var(--red);color:var(--red-ink);font-weight:600}
+button{font:inherit;font-weight:600;border:0;border-radius:12px;padding:10px 16px;cursor:pointer;background:var(--soft);color:var(--ink);transition:transform .15s, box-shadow .15s}
+button:hover:not(:disabled){transform:translateY(-1px)}
+button:active:not(:disabled){transform:scale(.97)}
+button.primary{background:linear-gradient(135deg,var(--red2),var(--red));color:var(--red-ink);box-shadow:0 4px 0 #8e1b1b}
+button.big{width:100%;padding:16px;font-size:1.15rem;font-weight:800}
+button.big:not(:disabled){animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{50%{box-shadow:0 4px 0 #8e1b1b,0 0 0 8px rgba(244,180,0,.35)}}
 button:disabled{opacity:.5;cursor:not-allowed}
 ul.list{list-style:none;margin:12px 0 0;padding:0}
-ul.list li{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px solid var(--line)}
+ul.list li{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px dashed var(--line)}
+ul.list li.new{animation:pop .35s both}
 ul.list li:first-child{border-top:0}
 .x{background:none;color:var(--muted);padding:4px 8px}
 .muted{color:var(--muted);font-size:.9rem}
-.err{color:var(--red);font-weight:500;margin-top:10px}
+.hint{color:#dbe7f0;text-align:center;font-size:.9rem}
+.err{color:#fff;background:var(--red);border-radius:12px;padding:10px 14px;font-weight:600;margin-top:10px}
 .link{flex:1;min-width:0;display:flex;gap:8px;align-items:center}
 .link code{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.8rem;color:var(--muted)}
-.reveal{text-align:center;padding:40px 20px}
-.reveal .big{font-size:2.4rem;font-weight:700;color:var(--red);margin:12px 0}
-.gift{font-size:3rem}
+.reveal{text-align:center;padding:36px 20px}
+.reveal h1{color:var(--red);text-shadow:none;font-size:2.6rem}
+.reveal .big{font-family:"Mountains of Christmas",cursive;font-size:3.4rem;line-height:1.1;color:var(--green);margin:8px 0 14px;animation:zoom .7s cubic-bezier(.2,1.6,.4,1) both}
+@keyframes zoom{from{transform:scale(0) rotate(-10deg);opacity:0}}
 .hidden{display:none}
+/* Cadeau CSS */
+.box{position:relative;width:130px;height:120px;margin:26px auto 22px;cursor:pointer;animation:shake 2.2s ease-in-out infinite}
+.box .base{position:absolute;bottom:0;left:8px;right:8px;height:84px;background:var(--red);border-radius:6px}
+.box .lid{position:absolute;top:10px;left:0;right:0;height:30px;background:var(--red2);border-radius:6px;transition:transform .7s cubic-bezier(.3,1.4,.5,1),opacity .7s}
+.box .rib-v{position:absolute;top:10px;bottom:0;left:50%;width:18px;margin-left:-9px;background:var(--gold)}
+.box .bow{position:absolute;top:-8px;left:50%;width:70px;height:24px;margin-left:-35px}
+.box .bow:before,.box .bow:after{content:"";position:absolute;top:0;width:32px;height:20px;border:6px solid var(--gold);border-radius:50%}
+.box .bow:before{left:0;transform:rotate(-25deg)} .box .bow:after{right:0;transform:rotate(25deg)}
+.box .top{position:absolute;inset:0;transition:transform .7s cubic-bezier(.3,1.4,.5,1),opacity .7s}
+.box.open{animation:none}
+.box.open .top{transform:translate(40px,-120px) rotate(35deg);opacity:0}
+@keyframes shake{0%,70%,100%{transform:rotate(0)}75%{transform:rotate(-6deg)}80%{transform:rotate(6deg)}85%{transform:rotate(-4deg)}90%{transform:rotate(3deg)}}
+.confetti{position:fixed;top:-12px;width:10px;height:14px;z-index:5;pointer-events:none;animation:conf linear forwards}
+@keyframes conf{to{transform:translate(var(--dx),110vh) rotate(var(--rot))}}
 </style>
 </head>
 <body>
+<div id="snow" aria-hidden="true"></div>
 <main id="app"></main>
 <script>
 // ---------- Encodage des liens (obfuscation légère, pas du chiffrement) ----------
@@ -85,39 +126,110 @@ function renderReveal(data){
   document.title = "Ton Secret Santa";
   const app = document.getElementById("app");
   app.innerHTML = `
+    <img class="hero" src="assets/hero.png" alt="" onerror="this.remove()">
     <div class="card reveal">
-      <div class="gift">🎁</div>
-      <p class="muted">${esc(data.e || "Secret Santa")}</p>
+      <p class="muted" style="margin:0">${esc(data.e || "Secret Santa")}</p>
       <h1>Bonjour ${esc(data.g)} !</h1>
       <div id="hide">
-        <p class="muted">Assure-toi que personne ne regarde ton écran.</p>
-        <button class="primary" id="btn">Découvrir à qui j'offre</button>
+        <div class="box" id="box" role="button" tabindex="0" aria-label="Ouvrir le cadeau">
+          <div class="base"></div><div class="rib-v"></div>
+          <div class="top"><div class="lid"></div><div class="bow"></div></div>
+        </div>
+        <p class="muted">Vérifie que personne ne regarde ton écran, puis ouvre le cadeau.</p>
+        <button class="primary" id="btn">🎁 Ouvrir mon cadeau</button>
       </div>
       <div id="show" class="hidden">
-        <p>Tu offres un cadeau à</p>
+        <p style="margin:0">Tu offres un cadeau à</p>
         <div class="big">${esc(data.r)}</div>
-        ${data.b ? `<p>Budget : <strong>${esc(data.b)}</strong></p>` : ""}
-        ${data.d ? `<p>Échange des cadeaux : <strong>${esc(new Date(data.d).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"}))}</strong></p>` : ""}
+        ${data.b ? `<p>💰 Budget : <strong>${esc(data.b)}</strong></p>` : ""}
+        ${data.d ? `<p>📅 Échange des cadeaux : <strong>${esc(new Date(data.d).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"}))}</strong></p>` : ""}
         <p class="muted">Chut, c'est un secret 🤫</p>
       </div>
     </div>`;
-  document.getElementById("btn").onclick = () => {
-    document.getElementById("hide").classList.add("hidden");
-    document.getElementById("show").classList.remove("hidden");
+  const open = () => {
+    const box = document.getElementById("box");
+    if (box.classList.contains("open")) return;
+    box.classList.add("open");
+    document.getElementById("btn").classList.add("hidden");
+    confetti();
+    setTimeout(() => {
+      document.getElementById("hide").classList.add("hidden");
+      document.getElementById("show").classList.remove("hidden");
+    }, 700);
   };
+  document.getElementById("btn").onclick = open;
+  document.getElementById("box").onclick = open;
+  document.getElementById("box").onkeydown = e => { if (e.key === "Enter" || e.key === " ") open(); };
 }
+
+function confetti(){
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const colors = ["#c62828","#f4b400","#1b7a4b","#ffffff","#e53935","#4fc3f7"];
+  for (let i=0;i<120;i++){
+    const c = document.createElement("div");
+    c.className = "confetti";
+    c.style.left = Math.random()*100 + "vw";
+    c.style.background = colors[i % colors.length];
+    c.style.setProperty("--dx", (Math.random()*200-100) + "px");
+    c.style.setProperty("--rot", (Math.random()*1080) + "deg");
+    c.style.animationDuration = (2 + Math.random()*2) + "s";
+    c.style.animationDelay = (Math.random()*0.4) + "s";
+    if (Math.random() < .5) c.style.borderRadius = "50%";
+    document.body.appendChild(c);
+    setTimeout(() => c.remove(), 4600);
+  }
+}
+
+function snow(){
+  const el = document.getElementById("snow"), chars = ["❄","❅","❆","•"];
+  for (let i=0;i<40;i++){
+    const f = document.createElement("span");
+    f.className = "flake";
+    f.textContent = chars[i % chars.length];
+    f.style.left = Math.random()*100 + "vw";
+    f.style.fontSize = (8 + Math.random()*16) + "px";
+    f.style.setProperty("--drift", (Math.random()*80-40) + "px");
+    f.style.animationDuration = (8 + Math.random()*10) + "s";
+    f.style.animationDelay = (-Math.random()*18) + "s";
+    el.appendChild(f);
+  }
+}
+snow();
 
 // ---------- Mode organisateur ----------
 const state = { event:"", budget:"", date:"", names:[], exclusions:[], links:null, error:"" };
 try { Object.assign(state, JSON.parse(localStorage.getItem("hotte") || "{}"), {error:""}); } catch(e){}
 const save = () => { try { localStorage.setItem("hotte", JSON.stringify(state)); } catch(e){} };
 
+let justAdded = false;
 function renderOrganizer(){
+  setTimeout(() => document.body.classList.add("ready"), 600);
   const app = document.getElementById("app");
   const opts = state.names.map(n => `<option>${esc(n)}</option>`).join("");
   app.innerHTML = `
-    <h1>Hotte <span>Surprise</span></h1>
-    <p class="sub">Organise ton Secret Santa en deux minutes. Personne, pas même toi, ne voit le résultat du tirage.</p>
+    <img class="hero" src="assets/hero.png" alt="" onerror="this.remove()">
+    <div class="title">
+      <svg class="scene" viewBox="0 0 600 200" role="img" aria-label="Paysage de Noël enneigé">
+  <defs>
+    <linearGradient id="hill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#d6e6f2"/></linearGradient>
+    <g id="tree"><polygon points="0,-70 -26,-30 -14,-30 -34,0 34,0 14,-30 26,-30" fill="#1b7a4b"/><rect x="-5" y="0" width="10" height="12" fill="#6d4c41"/>
+      <polygon points="0,-82 3,-74 11,-74 5,-69 7,-61 0,-66 -7,-61 -5,-69 -11,-74 -3,-74" fill="#f4b400" class="star"/>
+      <circle cx="-10" cy="-38" r="3" fill="#e53935"/><circle cx="12" cy="-22" r="3" fill="#f4b400"/><circle cx="-16" cy="-10" r="3" fill="#4fc3f7"/><circle cx="8" cy="-50" r="3" fill="#e53935"/></g>
+  </defs>
+  <circle cx="520" cy="40" r="22" fill="#fff7d6"/>
+  <g fill="#fff" class="stars"><circle cx="60" cy="30" r="2"/><circle cx="140" cy="60" r="1.5"/><circle cx="230" cy="22" r="2"/><circle cx="330" cy="50" r="1.5"/><circle cx="420" cy="18" r="2"/><circle cx="460" cy="80" r="1.5"/><circle cx="30" cy="90" r="1.5"/></g>
+  <path d="M0 150 Q150 105 300 140 T600 130 V200 H0Z" fill="url(#hill)"/>
+  <use href="#tree" x="80" y="160"/><use href="#tree" x="150" y="150" transform="scale(1)"/><use href="#tree" x="500" y="150"/>
+  <g transform="translate(270 128)">
+    <rect x="0" y="22" width="44" height="34" rx="4" fill="#c62828"/><rect x="-2" y="14" width="48" height="12" rx="3" fill="#e53935"/><rect x="19" y="14" width="6" height="42" fill="#f4b400"/>
+    <rect x="52" y="34" width="32" height="22" rx="3" fill="#1b7a4b"/><rect x="50" y="28" width="36" height="9" rx="3" fill="#2e9e64"/><rect x="65" y="28" width="5" height="28" fill="#fff"/>
+    <rect x="-30" y="38" width="24" height="18" rx="3" fill="#f4b400"/><rect x="-21" y="38" width="5" height="18" fill="#c62828"/>
+  </g>
+  <path d="M0 175 Q200 150 400 172 T600 168 V200 H0Z" fill="#ffffff"/>
+</svg>
+      <h1>Hotte <span>Surprise</span></h1>
+      <p class="sub">Organise ton Secret Santa en deux minutes. Personne, pas même toi, ne voit le résultat du tirage.</p>
+    </div>
 
     <div class="card">
       <h2>1. L'événement</h2>
@@ -131,7 +243,7 @@ function renderOrganizer(){
     <div class="card">
       <h2>2. Les participants (${state.names.length})</h2>
       <form class="row" id="addForm"><input id="name" placeholder="Prénom" autocomplete="off"><button class="primary">Ajouter</button></form>
-      <ul class="list">${state.names.map((n,i)=>`<li>${esc(n)}<button class="x" data-del="${i}" aria-label="Retirer">✕</button></li>`).join("")}</ul>
+      <ul class="list">${state.names.map((n,i)=>`<li class="${i===state.names.length-1&&justAdded?"new":""}">${esc(n)}<button class="x" data-del="${i}" aria-label="Retirer">✕</button></li>`).join("")}</ul>
     </div>
 
     <div class="card">
@@ -141,13 +253,13 @@ function renderOrganizer(){
       <ul class="list">${state.exclusions.map(([a,b],i)=>`<li>${esc(a)} ↔ ${esc(b)}<button class="x" data-delex="${i}" aria-label="Retirer">✕</button></li>`).join("")}</ul>
     </div>
 
-    <button class="primary" id="go" style="width:100%;padding:14px" ${state.names.length<3?"disabled":""}>🎲 Lancer le tirage</button>
-    ${state.names.length<3?`<p class="muted" style="text-align:center">Il faut au moins 3 participants.</p>`:""}
+    <button class="primary big" id="go" ${state.names.length<3?"disabled":""}>🎲 Lancer le tirage</button>
+    ${state.names.length<3?`<p class="hint">Il faut au moins 3 participants.</p>`:""}
     ${state.error?`<p class="err">${esc(state.error)}</p>`:""}
 
     ${state.links ? `
     <div class="card" style="margin-top:16px">
-      <h2>4. Envoie à chacun son lien</h2>
+      <h2>🎉 4. Envoie à chacun son lien</h2>
       <p class="muted" style="margin-top:0">Chaque lien ne révèle que la personne tirée par son destinataire. N'ouvre pas ceux des autres !</p>
       <ul class="list">${state.links.map(l=>`
         <li><strong style="flex:0 0 auto">${esc(l.name)}</strong>
@@ -164,7 +276,7 @@ function renderOrganizer(){
     if (!v) return;
     if (state.names.some(n => n.toLowerCase() === v.toLowerCase())) { state.error = `« ${v} » est déjà dans la liste.`; }
     else { state.names.push(v); state.error=""; state.links=null; }
-    save(); renderOrganizer(); document.getElementById("name").focus();
+    justAdded = true; save(); renderOrganizer(); justAdded = false; document.getElementById("name").focus();
   };
   app.querySelectorAll("[data-del]").forEach(b => b.onclick = () => {
     const n = state.names.splice(+b.dataset.del,1)[0];
