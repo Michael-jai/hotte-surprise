@@ -67,6 +67,18 @@ li.send{flex-direction:column;align-items:stretch!important}
 .btn{display:inline-flex;align-items:center;gap:4px;text-decoration:none;font-weight:600;border-radius:12px;padding:8px 14px;color:#fff;transition:transform .15s}
 .btn:hover{transform:translateY(-1px)}
 .btn.sms{background:#1e88e5} .btn.wa{background:#25a244}
+.code{font-family:ui-monospace,monospace;font-size:.75rem;word-break:break-all;background:var(--soft);border-radius:10px;padding:10px;margin:8px 0 12px;text-align:left;user-select:all}
+.code.small{font-size:.8rem}
+details{margin-top:12px;text-align:left} summary{cursor:pointer}
+.reveal .actions{justify-content:center}
+.ok{color:var(--green);font-weight:800;font-size:1.1rem;margin:4px 0}
+.checks{margin:0 0 12px;padding-left:0;list-style:none}
+.checks li{padding:2px 0} .checks li:before{content:"✓ ";color:var(--green);font-weight:800}
+.card h2 .x{float:right;font-size:.85rem;font-weight:600}
+.card a:not(.btn){color:var(--red);font-weight:600}
+.spinner{width:36px;height:36px;margin:10px auto;border:4px solid var(--line);border-top-color:var(--red);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#msg.err{position:sticky;bottom:12px}
 ul.list li.new{animation:pop .35s both}
 ul.list li:first-child{border-top:0}
 .x{background:none;color:var(--muted);padding:4px 8px}
@@ -100,39 +112,7 @@ ul.list li:first-child{border-top:0}
 <div id="snow" aria-hidden="true"></div>
 <main id="app"></main>
 <script>
-// ---------- Encodage des liens (obfuscation légère, pas du chiffrement) ----------
-const KEY = "hotte";
-function encode(obj){
-  const s = unescape(encodeURIComponent(JSON.stringify(obj)));
-  let o = ""; for (let i=0;i<s.length;i++) o += String.fromCharCode(s.charCodeAt(i) ^ KEY.charCodeAt(i%KEY.length));
-  return btoa(o).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
-}
-function decode(str){
-  const b = atob(str.replace(/-/g,"+").replace(/_/g,"/"));
-  let s = ""; for (let i=0;i<b.length;i++) s += String.fromCharCode(b.charCodeAt(i) ^ KEY.charCodeAt(i%KEY.length));
-  return JSON.parse(decodeURIComponent(escape(s)));
-}
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-
-// ---------- Tirage : chacun offre à une seule personne, jamais à soi ni à une exclusion ----------
-function draw(names, exclusions){
-  const forbidden = new Map(names.map(n => [n, new Set([n])]));
-  exclusions.forEach(([a,b]) => { forbidden.get(a)?.add(b); forbidden.get(b)?.add(a); });
-  const shuffle = a => { a = a.slice(); for (let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; };
-  const givers = shuffle(names), used = new Set(), result = {};
-  (function bt(i){
-    if (i === givers.length) return true;
-    const g = givers[i];
-    for (const r of shuffle(names)) {
-      if (used.has(r) || forbidden.get(g).has(r)) continue;
-      used.add(r); result[g] = r;
-      if (bt(i+1)) return true;
-      used.delete(r); delete result[g];
-    }
-    return false;
-  })(0) || (result.__fail = true);
-  return result.__fail ? null : result;
-}
 
 // ---------- Mode révélation ----------
 function renderReveal(data){
@@ -209,11 +189,29 @@ function snow(){
 }
 snow();
 
-// ---------- Mode organisateur ----------
-const state = { event:"", budget:"", date:"", names:[], phones:{}, exclusions:[], links:null, error:"" };
-try { Object.assign(state, JSON.parse(localStorage.getItem("hotte") || "{}"), {error:""}); } catch(e){}
-state.phones = state.phones || {};
-// Numéro au format international sans "+" (06 12… → 33612…), pour WhatsApp
+// ---------- Serveur (Google Apps Script) ----------
+const API_URL = "";   // URL du déploiement Apps Script (…/exec)
+
+async function api(action, data){
+  if (!API_URL) throw new Error("Le serveur n'est pas encore configuré.");
+  let res;
+  try { res = await fetch(API_URL, { method:"POST", body: JSON.stringify(Object.assign({ action }, data)) }); }
+  catch(e){ throw new Error("Impossible de joindre le serveur. Vérifie ta connexion et réessaie."); }
+  const out = await res.json().catch(() => ({ error: "Réponse inattendue du serveur." }));
+  if (out.error) throw new Error(out.error);
+  return out;
+}
+// Désactive un bouton pendant un appel et affiche l'erreur éventuelle dans #msg
+async function busy(btn, fn){
+  const label = btn.textContent, msg = document.getElementById("msg");
+  btn.disabled = true; btn.textContent = "Un instant…";
+  if (msg) { msg.className = "hidden"; msg.textContent = ""; }
+  try { await fn(); }
+  catch(e){ if (msg) { msg.textContent = e.message; msg.className = "err"; } }
+  finally { if (document.body.contains(btn)) { btn.disabled = false; btn.textContent = label; } }
+}
+
+// ---------- Utilitaires d'envoi ----------
 function intl(phone){
   let d = String(phone||"").replace(/[^\d+]/g,"");
   if (d.startsWith("+")) return d.slice(1);
@@ -221,109 +219,205 @@ function intl(phone){
   if (d.startsWith("0") && d.length === 10) return "33" + d.slice(1);
   return d;
 }
-function message(name, url){
-  return `🎅 Salut ${name} ! Voici ton lien pour le Secret Santa${state.event ? " « " + state.event + " »" : ""} : ${url}\nOuvre-le quand personne ne regarde ton écran 🤫`;
+function sendButtons(text, copyValue){
+  const msg = encodeURIComponent(text);
+  return `<div class="actions">
+    <a class="btn sms" href="sms:?&body=${msg}">💬 SMS</a>
+    <a class="btn wa" target="_blank" rel="noopener" href="https://wa.me/?text=${msg}">🟢 WhatsApp</a>
+    <button data-copy="${esc(copyValue ?? text)}">🔗 Copier</button>
+  </div>`;
 }
-const save = () => { try { localStorage.setItem("hotte", JSON.stringify(state)); } catch(e){} };
+function bindCopy(root){
+  root.querySelectorAll("[data-copy]").forEach(b => b.onclick = async () => {
+    try { await navigator.clipboard.writeText(b.dataset.copy); const t = b.textContent; b.textContent = "Copié ✓"; setTimeout(() => b.textContent = t, 1500); }
+    catch(e){ window.prompt("Copie ce texte :", b.dataset.copy); }
+  });
+}
+const baseUrl = () => location.href.split("#")[0];
+const fmtDate = d => new Date(d).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"});
+const eventInfo = ev => `${ev.budget ? `<p>💰 Budget : <strong>${esc(ev.budget)}</strong></p>` : ""}${ev.date ? `<p>📅 Échange : <strong>${esc(fmtDate(ev.date))}</strong></p>` : ""}`;
+const app = () => document.getElementById("app");
+const hero = (small) => `<img class="hero${small?" small":""}" src="assets/hero.jpg" alt="" onerror="this.remove()">`;
+const loading = () => { app().innerHTML = hero(true) + `<div class="card reveal"><div class="spinner"></div><p class="muted">Chargement…</p></div>`; };
+const fail = (m) => { app().innerHTML = hero(true) + `<div class="card reveal"><h1>Oups</h1><p>${esc(m)}</p><p><a href="${baseUrl()}">Retour à l'accueil</a></p></div>`; };
 
-let justAdded = false;
-function renderOrganizer(){
+function myEvents(){ try { return JSON.parse(localStorage.getItem("hotte-admin") || "[]"); } catch(e){ return []; } }
+function rememberEvent(e){ const l = myEvents().filter(x => x.id !== e.id); l.unshift(e); try { localStorage.setItem("hotte-admin", JSON.stringify(l.slice(0,10))); } catch(err){} }
+
+// ---------- Accueil : créer un Secret Santa ----------
+function renderHome(){
   setTimeout(() => document.body.classList.add("ready"), 600);
-  const app = document.getElementById("app");
-  const opts = state.names.map(n => `<option>${esc(n)}</option>`).join("");
-  app.innerHTML = `
-    <img class="hero" src="assets/hero.jpg" alt="" onerror="this.remove()">
+  document.title = "Hotte Surprise";
+  const mine = myEvents();
+  app().innerHTML = `
+    ${hero()}
     <div class="title">
       <h1>Hotte <span>Surprise</span></h1>
-      <p class="sub">Organise ton Secret Santa en deux minutes. Personne, pas même toi, ne voit le résultat du tirage.</p>
+      <p class="sub">Chacun s'inscrit avec son email, tu lances le tirage, chacun reçoit le sien par email. Personne, pas même toi, ne voit qui offre à qui.</p>
+    </div>
+    ${mine.length ? `<div class="card"><h2>Mes Secret Santa</h2><ul class="list">${mine.map(e => `<li><a href="#admin=${esc(e.id)}.${esc(e.token)}">${esc(e.name)}</a><span class="muted">gérer →</span></li>`).join("")}</ul></div>` : ""}
+    <div class="card">
+      <h2>🎄 Créer un Secret Santa</h2>
+      <form id="create">
+        <label>Nom</label><input id="name" placeholder="Noël en famille 2026" required>
+        <div class="row">
+          <div><label>Budget</label><input id="budget" placeholder="30 €"></div>
+          <div><label>Date de l'échange</label><input id="date" type="date"></div>
+        </div>
+        <label>Ton email (pour recevoir ton accès organisateur)</label><input id="email" type="email" required autocomplete="email">
+        <button class="primary big" style="margin-top:16px">Créer</button>
+      </form>
+      <p id="msg" class="hidden"></p>
+    </div>`;
+  document.getElementById("create").onsubmit = e => {
+    e.preventDefault();
+    busy(e.submitter || e.target.querySelector("button"), async () => {
+      const v = id => document.getElementById(id).value.trim();
+      const r = await api("createEvent", { name: v("name"), budget: v("budget"), date: v("date"), orgEmail: v("email") });
+      rememberEvent({ id: r.eventId, token: r.adminToken, name: v("name") });
+      location.hash = "admin=" + r.eventId + "." + r.adminToken;
+    });
+  };
+}
+
+// ---------- Espace organisateur ----------
+async function renderAdmin(id, token, data){
+  setTimeout(() => document.body.classList.add("ready"), 600);
+  if (!data) { loading(); try { data = await api("adminGet", { eventId:id, adminToken:token }); } catch(e){ return fail(e.message); } }
+  rememberEvent({ id, token, name: data.name });
+  document.title = data.name + " · Organisateur";
+  const joinUrl = baseUrl() + "#e=" + id;
+  const invite = `🎄 Tu es invité·e au Secret Santa « ${data.name} » ! Inscris-toi ici avec ton email : ${joinUrl}`;
+  const byId = Object.fromEntries(data.participants.map(p => [p.id, p.name]));
+  const opts = data.participants.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("");
+  const open = data.status === "open";
+  app().innerHTML = `
+    ${hero()}
+    <div class="title"><h1>${esc(data.name)}</h1><p class="sub">Espace organisateur · garde ce lien pour toi</p></div>
+
+    <div class="card">
+      <h2>1. Invite les participants</h2>
+      ${eventInfo(data)}
+      ${open ? `<p class="muted" style="margin-top:0">Envoie ce lien à tout le monde. Chacun s'inscrit avec son email et reçoit un code secret. Si tu participes, inscris-toi aussi.</p>
+      ${sendButtons(invite, joinUrl)}` : `<p class="muted">Les inscriptions sont fermées.</p>`}
     </div>
 
     <div class="card">
-      <h2>1. L'événement</h2>
-      <label>Nom</label><input id="event" placeholder="Noël en famille 2026" value="${esc(state.event)}">
-      <div class="row">
-        <div><label>Budget</label><input id="budget" placeholder="30 €" value="${esc(state.budget)}"></div>
-        <div><label>Date de l'échange</label><input id="date" type="date" value="${esc(state.date)}"></div>
-      </div>
+      <h2>2. Inscrits (${data.participants.length}) <button class="x" id="refresh" title="Actualiser">🔄 Actualiser</button></h2>
+      ${data.participants.length ? "" : `<p class="muted">Personne pour l'instant. Les inscriptions apparaîtront ici.</p>`}
+      <ul class="list">${data.participants.map(p => `<li><span class="pname">${esc(p.name)} <span class="muted">${esc(p.email)}</span></span>${open ? `<button class="x" data-del="${esc(p.id)}" aria-label="Retirer ${esc(p.name)}">✕</button>` : `<button class="x" data-resend="${esc(p.id)}">Renvoyer l'email</button>`}</li>`).join("")}</ul>
     </div>
 
-    <div class="card">
-      <h2>2. Les participants (${state.names.length})</h2>
-      <form class="row wrap" id="addForm"><input id="name" placeholder="Prénom" autocomplete="off"><input id="phone" type="tel" inputmode="tel" placeholder="Tél. (facultatif)" autocomplete="off"><button class="primary">Ajouter</button></form>
-      <ul class="list">${state.names.map((n,i)=>`<li class="${i===state.names.length-1&&justAdded?"new":""}"><span class="pname">${esc(n)}</span><input class="ptel" type="tel" inputmode="tel" placeholder="Téléphone" data-tel="${esc(n)}" value="${esc(state.phones[n]||"")}" aria-label="Téléphone de ${esc(n)}"><button class="x" data-del="${i}" aria-label="Retirer">✕</button></li>`).join("")}</ul>
-    </div>
-
+    ${open ? `
     <div class="card">
       <h2>3. Exclusions <span class="muted">(facultatif)</span></h2>
       <p class="muted" style="margin:0">Pour éviter que deux personnes se tirent entre elles, par exemple un couple.</p>
       <div class="row" style="margin-top:10px"><select id="exA">${opts}</select><select id="exB">${opts}</select><button id="addEx">Ajouter</button></div>
-      <ul class="list">${state.exclusions.map(([a,b],i)=>`<li>${esc(a)} ↔ ${esc(b)}<button class="x" data-delex="${i}" aria-label="Retirer">✕</button></li>`).join("")}</ul>
+      <ul class="list">${data.exclusions.map(([a,b],i)=>`<li>${esc(byId[a])} ↔ ${esc(byId[b])}<button class="x" data-delex="${i}" aria-label="Retirer">✕</button></li>`).join("")}</ul>
     </div>
-
-    <button class="primary big" id="go" ${state.names.length<3?"disabled":""}>🎲 Lancer le tirage</button>
-    ${state.names.length<3?`<p class="hint">Il faut au moins 3 participants.</p>`:""}
-    ${state.error?`<p class="err">${esc(state.error)}</p>`:""}
-
-    ${state.links ? `
-    <div class="card" style="margin-top:16px">
-      <h2>🎉 4. Envoie à chacun son lien</h2>
-      <p class="muted" style="margin-top:0">Chaque lien ne révèle que la personne tirée par son destinataire. Touche SMS ou WhatsApp : le message est déjà écrit, il ne reste qu'à appuyer sur Envoyer. N'ouvre pas les liens des autres !</p>
-      <ul class="list">${state.links.map(l=>{ const tel = state.phones[l.name]||"", msg = encodeURIComponent(message(l.name, l.url)); return `
-        <li class="send"><div><strong>${esc(l.name)}</strong> <span class="muted">${tel?esc(tel):"pas de numéro"}</span></div>
-          <div class="actions">
-            <a class="btn sms" href="sms:${esc(tel.replace(/[^\d+]/g,""))}?&body=${msg}">💬 SMS</a>
-            <a class="btn wa" target="_blank" rel="noopener" href="https://wa.me/${esc(intl(tel))}?text=${msg}">🟢 WhatsApp</a>
-            <button data-copy="${esc(l.url)}">🔗 Copier</button>
-          </div></li>`}).join("")}</ul>
-    </div>` : ""}
-  `;
-
-  const bind = (id,key) => document.getElementById(id).oninput = e => { state[key]=e.target.value; state.links=null; save(); };
-  bind("event","event"); bind("budget","budget"); bind("date","date");
-
-  document.getElementById("addForm").onsubmit = e => {
-    e.preventDefault();
-    const v = document.getElementById("name").value.trim(), tel = document.getElementById("phone").value.trim();
-    if (!v) return;
-    if (state.names.some(n => n.toLowerCase() === v.toLowerCase())) { state.error = `« ${v} » est déjà dans la liste.`; }
-    else { state.names.push(v); if (tel) state.phones[v] = tel; state.error=""; state.links=null; }
-    justAdded = true; save(); renderOrganizer(); justAdded = false; document.getElementById("name").focus();
-  };
-  app.querySelectorAll("[data-del]").forEach(b => b.onclick = () => {
-    const n = state.names.splice(+b.dataset.del,1)[0];
-    state.exclusions = state.exclusions.filter(p => !p.includes(n));
-    delete state.phones[n];
-    state.links=null; save(); renderOrganizer();
-  });
-  app.querySelectorAll("[data-tel]").forEach(inp => {
-    inp.oninput = () => { state.phones[inp.dataset.tel] = inp.value.trim(); save(); };
-    inp.onchange = () => { if (state.links) renderOrganizer(); };
-  });
-  app.querySelectorAll("[data-delex]").forEach(b => b.onclick = () => { state.exclusions.splice(+b.dataset.delex,1); state.links=null; save(); renderOrganizer(); });
-  document.getElementById("addEx").onclick = () => {
+    <div id="drawZone">
+      <button class="primary big" id="go" ${data.participants.length<3?"disabled":""}>🎲 Lancer le tirage</button>
+      ${data.participants.length<3?`<p class="hint">Il faut au moins 3 inscrits.</p>`:""}
+    </div>` : `
+    <div class="card">
+      <h2>🎉 Le tirage est fait</h2>
+      ${data.verified ? `<p class="ok">✓ Tirage vérifié</p>
+      <ul class="checks"><li>Chaque participant offre à une seule personne</li><li>Personne n'est tiré deux fois</li><li>Personne ne s'est tiré soi-même</li><li>Toutes les exclusions sont respectées</li></ul>` : `<p class="err">La vérification du tirage a échoué. Contacte le support.</p>`}
+      <p>Chacun a reçu son tirage par email${data.sent != null ? ` (${data.sent} email${data.sent>1?"s":""} envoyé${data.sent>1?"s":""})` : ""}. Toi non plus, tu ne peux pas voir les résultats.</p>
+      ${data.failed && data.failed.length ? `<p class="err">Échec d'envoi pour : ${esc(data.failed.join(", "))}. Utilise « Renvoyer l'email ».</p>` : ""}
+    </div>`}
+    <p id="msg" class="hidden"></p>`;
+  bindCopy(app());
+  const call = (btn, action, extra) => busy(btn, async () => renderAdmin(id, token, await api(action, Object.assign({ eventId:id, adminToken:token }, extra))));
+  document.getElementById("refresh").onclick = e => call(e.currentTarget, "adminGet");
+  app().querySelectorAll("[data-del]").forEach(b => b.onclick = () => call(b, "adminUpdate", { removeId: b.dataset.del }));
+  app().querySelectorAll("[data-resend]").forEach(b => b.onclick = () => busy(b, async () => { await api("adminResend", { eventId:id, adminToken:token, participantId: b.dataset.resend }); b.textContent = "Envoyé ✓"; }));
+  app().querySelectorAll("[data-delex]").forEach(b => b.onclick = () => { const ex = data.exclusions.slice(); ex.splice(+b.dataset.delex,1); call(b, "adminUpdate", { exclusions: ex }); });
+  const addEx = document.getElementById("addEx");
+  if (addEx) addEx.onclick = () => {
     const a = document.getElementById("exA").value, b = document.getElementById("exB").value;
-    if (!a || a===b) return;
-    if (!state.exclusions.some(([x,y]) => (x===a&&y===b)||(x===b&&y===a))) state.exclusions.push([a,b]);
-    state.links=null; save(); renderOrganizer();
+    if (!a || a === b || data.exclusions.some(([x,y]) => (x===a&&y===b)||(x===b&&y===a))) return;
+    call(addEx, "adminUpdate", { exclusions: data.exclusions.concat([[a,b]]) });
   };
-  document.getElementById("go").onclick = () => {
-    const res = draw(state.names, state.exclusions);
-    if (!res) { state.error = "Impossible de faire un tirage avec ces exclusions. Retires-en une et réessaie."; state.links=null; save(); return renderOrganizer(); }
-    const base = location.href.split("#")[0];
-    state.error = "";
-    state.links = state.names.map(g => ({ name:g, url: base + "#" + encode({ g, r:res[g], b:state.budget, d:state.date, e:state.event }) }));
-    save(); renderOrganizer();
+  const go = document.getElementById("go");
+  if (go) go.onclick = () => {
+    document.getElementById("drawZone").innerHTML = `<div class="card reveal">
+      <p><strong>Prêt à lancer le tirage pour ${data.participants.length} personnes ?</strong></p>
+      <p class="muted">Les inscriptions seront fermées et chacun recevra son tirage par email. On ne pourra plus le refaire.</p>
+      <div class="actions"><button class="primary" id="confirm">🎲 Oui, lancer le tirage</button><button id="cancel">Annuler</button></div></div>`;
+    document.getElementById("cancel").onclick = () => renderAdmin(id, token, data);
+    document.getElementById("confirm").onclick = e => call(e.currentTarget, "adminDraw");
   };
-  app.querySelectorAll("[data-copy]").forEach(b => b.onclick = async () => {
-    try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = "Copié ✓"; }
-    catch(e){ prompt("Copie ce lien :", b.dataset.copy); }
-  });
+}
+
+// ---------- Page participant : inscription puis découverte du tirage ----------
+async function renderEvent(id, token){
+  setTimeout(() => document.body.classList.add("ready"), 600);
+  loading();
+  if (token) {
+    try {
+      const r = await api("reveal", { eventId:id, token });
+      if (!r.waiting) return renderReveal(r);
+    } catch(e){ /* lien invalide : on affiche la page normale */ }
+  }
+  let ev;
+  try { ev = await api("getEvent", { eventId:id }); } catch(e){ return fail(e.message); }
+  document.title = ev.name + " · Secret Santa";
+  const open = ev.status === "open";
+  app().innerHTML = `
+    ${hero(true)}
+    <div class="card reveal">
+      <p class="muted" style="margin:0">Secret Santa</p>
+      <h1>${esc(ev.name)}</h1>
+      ${eventInfo(ev)}
+      <p class="muted">${ev.count} inscrit${ev.count>1?"s":""}${open ? "" : " · tirage effectué 🎉"}</p>
+    </div>
+    ${open ? `
+    <div class="card">
+      <h2>✨ Je m'inscris</h2>
+      <form id="join">
+        <label>Ton prénom</label><input id="jname" required autocomplete="given-name">
+        <label>Ton email</label><input id="jemail" type="email" required autocomplete="email">
+        <button class="primary big" style="margin-top:16px">Je participe</button>
+      </form>
+      <div id="joined" class="hidden"></div>
+    </div>` : ""}
+    <div class="card">
+      <h2>🎁 Découvrir mon tirage</h2>
+      <p class="muted" style="margin-top:0">${open ? "Le tirage n'a pas encore eu lieu. Tu recevras un email dès qu'il sera fait." : "Clique sur le lien reçu par email, ou entre ton email et ton code secret."}</p>
+      <form id="find">
+        <div class="row wrap"><input id="femail" type="email" placeholder="Ton email" required autocomplete="email"><input id="fcode" inputmode="numeric" placeholder="Code secret" required autocomplete="off" style="flex:0 1 140px"></div>
+        <button class="primary" style="margin-top:10px">Voir mon tirage</button>
+      </form>
+    </div>
+    <p id="msg" class="hidden"></p>`;
+  const join = document.getElementById("join");
+  if (join) join.onsubmit = e => {
+    e.preventDefault();
+    busy(join.querySelector("button"), async () => {
+      const r = await api("register", { eventId:id, name: document.getElementById("jname").value.trim(), email: document.getElementById("jemail").value.trim() });
+      join.classList.add("hidden");
+      const j = document.getElementById("joined");
+      j.innerHTML = `<p class="ok">✓ ${r.again ? "Te revoilà" : "C'est noté"}, ${esc(r.name)} !</p><p>Ton code secret vient de t'être envoyé par email${r.again ? " (c'est un nouveau code, l'ancien ne marche plus)" : ""}. Regarde aussi dans tes spams. Garde-le précieusement jusqu'au tirage.</p>`;
+      j.classList.remove("hidden");
+    });
+  };
+  document.getElementById("find").onsubmit = e => {
+    e.preventDefault();
+    busy(e.target.querySelector("button"), async () => {
+      const r = await api("reveal", { eventId:id, email: document.getElementById("femail").value.trim(), code: document.getElementById("fcode").value.trim() });
+      if (r.waiting) throw new Error(`Patience ${r.name}, le tirage n'a pas encore eu lieu !`);
+      renderReveal(r);
+    });
+  };
 }
 
 function route(){
-  const h = location.hash.slice(1);
-  if (h) { try { return renderReveal(decode(h)); } catch(e){} }
-  renderOrganizer();
+  document.body.classList.remove("ready");
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (h.get("admin")) { const [id, token] = h.get("admin").split("."); return renderAdmin(id, token); }
+  if (h.get("e")) return renderEvent(h.get("e"), h.get("t"));
+  renderHome();
 }
 window.onhashchange = route;
 route();
