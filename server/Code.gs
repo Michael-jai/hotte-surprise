@@ -6,9 +6,9 @@ const SITE = "https://michael-jai.github.io/hotte-surprise/";
 const CODE_DIGITS = 6;          // longueur du code secret envoyé à chaque participant
 const MAX_PARTICIPANTS = 40;     // limite liée à la taille de stockage (9 Ko par Secret Santa)
 const MAX_EVENTS_PER_DAY = 10;   // anti-abus : créations de Secret Santa par jour sur tout le site
-const MAX_CODE_FAILURES = 10;
+const MAX_CODE_FAILURES = 10;    // anti-devinette : codes faux tolérés par heure et par Secret Santa
 // Connexion Google pour les organisateurs : ID client OAuth (public). Vide = création libre sans connexion.
-const GOOGLE_CLIENT_ID = "841116298846-u2p0did8cuubiabmauqtsfvsmaf2qfp7.apps.googleusercontent.com";    // anti-devinette : codes faux tolérés par heure et par Secret Santa
+const GOOGLE_CLIENT_ID = "841116298846-u2p0did8cuubiabmauqtsfvsmaf2qfp7.apps.googleusercontent.com";
 
 function doPost(e) {
   let out;
