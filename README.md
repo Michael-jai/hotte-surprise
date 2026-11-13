@@ -11,4 +11,4 @@ Le tirage n'est stocké nulle part : chaque résultat est encodé dans le lien d
 
 ## Ajouter une image (Leonardo ou autre)
 
-Dépose une image nommée `hero.png` dans le dossier `assets/` : elle s'affiche automatiquement en haut de la page d'accueil et de la page de révélation. Format conseillé : paysage, environ 1600 × 600 px.
+Dépose une image nommée `hero.jpg` dans le dossier `assets/` : elle s'affiche automatiquement en haut de la page d'accueil et de la page de révélation. Format conseillé : paysage, environ 1600 × 600 px.

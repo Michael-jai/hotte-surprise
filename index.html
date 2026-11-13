@@ -18,12 +18,15 @@
 html{background:var(--bg2)}
 body{margin:0;min-height:100vh;color:var(--ink);font:16px/1.5 "Nunito",system-ui,sans-serif;
   background:radial-gradient(ellipse 120% 70% at top,#1d4f7a 0%,var(--bg1) 50%,var(--bg2) 100%);}
+body:before{content:"";position:fixed;inset:0;z-index:0;
+  background:linear-gradient(180deg,rgba(14,42,71,.78),rgba(18,61,46,.9)),url(assets/hero.jpg) center/cover no-repeat;}
 #snow{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden}
 .flake{position:absolute;top:-10px;color:#fff;opacity:.85;animation:fall linear infinite;user-select:none}
 @keyframes fall{to{transform:translate(var(--drift),105vh) rotate(360deg)}}
 @media (prefers-reduced-motion: reduce){.flake{display:none}}
 main{position:relative;z-index:1;max-width:640px;margin:0 auto;padding:36px 16px 64px}
-.hero{display:block;max-height:280px;object-fit:cover;width:100%;border-radius:18px;margin-bottom:18px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.hero.small{height:150px}
+.hero{display:block;height:260px;object-fit:cover;object-position:50% 48%;width:100%;border-radius:18px;margin-bottom:18px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
 .title{text-align:center;color:#fff;margin-bottom:26px}
 h1{font-family:"Mountains of Christmas",cursive;font-size:3.2rem;line-height:1.1;margin:0;text-shadow:0 3px 0 rgba(0,0,0,.25)}
 h1 span{color:var(--gold)}
@@ -126,7 +129,7 @@ function renderReveal(data){
   document.title = "Ton Secret Santa";
   const app = document.getElementById("app");
   app.innerHTML = `
-    <img class="hero" src="assets/hero.png" alt="" onerror="this.remove()">
+    <img class="hero small" src="assets/hero.jpg" alt="" onerror="this.remove()">
     <div class="card reveal">
       <p class="muted" style="margin:0">${esc(data.e || "Secret Santa")}</p>
       <h1>Bonjour ${esc(data.g)} !</h1>
@@ -207,26 +210,8 @@ function renderOrganizer(){
   const app = document.getElementById("app");
   const opts = state.names.map(n => `<option>${esc(n)}</option>`).join("");
   app.innerHTML = `
-    <img class="hero" src="assets/hero.png" alt="" onerror="this.remove()">
+    <img class="hero" src="assets/hero.jpg" alt="" onerror="this.remove()">
     <div class="title">
-      <svg class="scene" viewBox="0 0 600 200" role="img" aria-label="Paysage de Noël enneigé">
-  <defs>
-    <linearGradient id="hill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#d6e6f2"/></linearGradient>
-    <g id="tree"><polygon points="0,-70 -26,-30 -14,-30 -34,0 34,0 14,-30 26,-30" fill="#1b7a4b"/><rect x="-5" y="0" width="10" height="12" fill="#6d4c41"/>
-      <polygon points="0,-82 3,-74 11,-74 5,-69 7,-61 0,-66 -7,-61 -5,-69 -11,-74 -3,-74" fill="#f4b400" class="star"/>
-      <circle cx="-10" cy="-38" r="3" fill="#e53935"/><circle cx="12" cy="-22" r="3" fill="#f4b400"/><circle cx="-16" cy="-10" r="3" fill="#4fc3f7"/><circle cx="8" cy="-50" r="3" fill="#e53935"/></g>
-  </defs>
-  <circle cx="520" cy="40" r="22" fill="#fff7d6"/>
-  <g fill="#fff" class="stars"><circle cx="60" cy="30" r="2"/><circle cx="140" cy="60" r="1.5"/><circle cx="230" cy="22" r="2"/><circle cx="330" cy="50" r="1.5"/><circle cx="420" cy="18" r="2"/><circle cx="460" cy="80" r="1.5"/><circle cx="30" cy="90" r="1.5"/></g>
-  <path d="M0 150 Q150 105 300 140 T600 130 V200 H0Z" fill="url(#hill)"/>
-  <use href="#tree" x="80" y="160"/><use href="#tree" x="150" y="150" transform="scale(1)"/><use href="#tree" x="500" y="150"/>
-  <g transform="translate(270 128)">
-    <rect x="0" y="22" width="44" height="34" rx="4" fill="#c62828"/><rect x="-2" y="14" width="48" height="12" rx="3" fill="#e53935"/><rect x="19" y="14" width="6" height="42" fill="#f4b400"/>
-    <rect x="52" y="34" width="32" height="22" rx="3" fill="#1b7a4b"/><rect x="50" y="28" width="36" height="9" rx="3" fill="#2e9e64"/><rect x="65" y="28" width="5" height="28" fill="#fff"/>
-    <rect x="-30" y="38" width="24" height="18" rx="3" fill="#f4b400"/><rect x="-21" y="38" width="5" height="18" fill="#c62828"/>
-  </g>
-  <path d="M0 175 Q200 150 400 172 T600 168 V200 H0Z" fill="#ffffff"/>
-</svg>
       <h1>Hotte <span>Surprise</span></h1>
       <p class="sub">Organise ton Secret Santa en deux minutes. Personne, pas même toi, ne voit le résultat du tirage.</p>
     </div>
