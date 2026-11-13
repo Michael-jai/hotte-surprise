@@ -84,17 +84,39 @@ function googleEmail(idToken) {
 function isOwner(ev, email) { return !!email && (ev.owner ? ev.owner === email : normEmail(ev.orgEmail) === email); }
 
 // ---------- Listes d'envies (une propriété par participant, hors de l'événement pour ne pas dépasser 9 Ko) ----------
-const MAX_WISH = 400;
+const MAX_WISH = 1500;
 const wishKey = (evId, pid) => "wish_" + evId + "_" + pid;
 function getWish(evId, pid) { return props().getProperty(wishKey(evId, pid)) || ""; }
 function setWish(evId, pid, text) {
   const w = String(text || "").replace(/\r/g, "").replace(/[\u0000-\u0009\u000b-\u001f]/g, "").trim().slice(0, MAX_WISH);
-  if (w) props().setProperty(wishKey(evId, pid), w); else props().deleteProperty(wishKey(evId, pid));
-  return w;
+  if (w) props().setProperty(wishKey(evId, pid), normalizeWish(w).slice(0, MAX_WISH)); else props().deleteProperty(wishKey(evId, pid));
+  return getWish(evId, pid);
 }
+// Liens de la liste d'envies : les liens courts Amazon (amzn.eu/…) sont dépliés et tous raccourcis en amazon.xx/dp/ASIN,
+// ce qui permet au site d'afficher l'image du produit. (Amazon bloque la lecture de ses pages depuis les serveurs Google.)
+const URL_RE = /https?:\/\/[^\s<>"']+/g;
+function amazonShort(u) {
+  const m = u.match(/^https?:\/\/(?:www\.)?amazon\.([a-z.]+)\/(?:[^?#]*\/)?(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})/i);
+  return m ? "https://www.amazon." + m[1] + "/dp/" + m[2].toUpperCase() : u;
+}
+function expandLink(u) {
+  let url = u;
+  try {
+    for (let i = 0; i < 3 && /^https?:\/\/(amzn\.(eu|to|com)|a\.co)\//i.test(url); i++) {
+      const res = UrlFetchApp.fetch(url, { followRedirects: false, muteHttpExceptions: true });
+      const loc = res.getHeaders()["Location"] || res.getHeaders()["location"];
+      if (!loc) break;
+      url = String(loc);
+    }
+  } catch (e) {}
+  const out = amazonShort(url);
+  return out === url && url !== u && !/\/dp\//.test(out) ? u : out;
+}
+const normalizeWish = w => String(w || "").replace(URL_RE, u => expandLink(u.replace(/[).,;!]+$/, "")));
+
 function deleteEventData(evId) {
   const all = props().getProperties();
-  Object.keys(all).forEach(k => { if (k.indexOf("wish_" + evId + "_") === 0) props().deleteProperty(k); });
+  Object.keys(all).forEach(k => { if (k.indexOf("wish_" + evId + "_") === 0 || k.indexOf("pv_" + evId + "_") === 0) props().deleteProperty(k); });
   props().deleteProperty("ev_" + evId);
   props().deleteProperty("fail_" + evId);
 }
