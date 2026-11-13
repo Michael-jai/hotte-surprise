@@ -476,7 +476,12 @@ async function googleButton(el, done){
     try {
       const s = await api("login", { idToken: r.credential });
       try { localStorage.setItem("hotte-google", JSON.stringify({ token: s.session, email: s.email, exp: s.exp })); } catch(e){}
-    } catch(e){ el.insertAdjacentHTML("afterend", `<p class="err">${esc(e.message)}</p>`); return; }
+    } catch(e){
+      if (!/inconnue/.test(e.message)) { el.insertAdjacentHTML("afterend", `<p class="err">${esc(e.message)}</p>`); return; }
+      // Serveur pas encore à jour : on garde le jeton Google lui-même (valable 1 heure)
+      try { const i = JSON.parse(decodeURIComponent(escape(atob(r.credential.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")))));
+        localStorage.setItem("hotte-google", JSON.stringify({ token: r.credential, email: i.email, exp: i.exp })); } catch(x){}
+    }
     done();
   }});
   google.accounts.id.renderButton(el, { theme: "filled_blue", size: "large", shape: "pill", text: "signin_with", locale: "fr" });
