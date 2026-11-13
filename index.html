@@ -103,6 +103,8 @@ ul.list li:first-child{border-top:0}
 .unseen{color:#b26a00;font-weight:700;white-space:nowrap;display:flex;align-items:center;gap:6px}
 .seenbar{height:10px;border-radius:99px;background:var(--soft);overflow:hidden;margin-top:12px}
 .seenbar div{height:100%;background:linear-gradient(90deg,var(--green),#2fa66b);border-radius:99px;transition:width .6s}
+.card.danger{border-top-color:#7a1414}
+button.armed{background:var(--red);color:#fff;border-color:var(--red)}
 ul.list li.mine{padding:0}
 ul.list li.mine a{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;padding:10px 4px;text-decoration:none}
 ul.list li.mine a span:first-child{text-decoration:underline}
@@ -318,6 +320,7 @@ async function googleButton(el, done){
 }
 
 function myEvents(){ try { return JSON.parse(localStorage.getItem("hotte-admin") || "[]"); } catch(e){ return []; } }
+function forgetEvent(id){ try { localStorage.setItem("hotte-admin", JSON.stringify(myEvents().filter(x => x.id !== id))); } catch(err){} }
 function rememberEvent(e){ const l = myEvents().filter(x => x.id !== e.id); l.unshift(e); try { localStorage.setItem("hotte-admin", JSON.stringify(l.slice(0,10))); } catch(err){} }
 
 // ---------- Accueil : créer un Secret Santa ----------
@@ -432,8 +435,22 @@ async function renderAdmin(id, token, data){
       <p>Chacun a reçu son tirage par email${data.sent != null ? ` (${data.sent} email${data.sent>1?"s":""} envoyé${data.sent>1?"s":""})` : ""}. Toi non plus, tu ne peux pas voir les résultats.</p>
       ${data.failed && data.failed.length ? `<p class="err">Échec d'envoi pour : ${esc(data.failed.join(", "))}. Utilise « Renvoyer l'email ».</p>` : ""}
     </div>`}
+    <div class="card danger">
+      <h2>🗑 Supprimer ce Secret Santa</h2>
+      <p class="muted" style="margin:0">Efface définitivement les inscrits, les codes et le tirage. Les liens envoyés ne marcheront plus.</p>
+      <button class="x" id="delEvent" style="margin-top:10px">Supprimer définitivement</button>
+    </div>
     <p id="msg" class="hidden"></p>`;
   bindCopy(app());
+  const delEvent = document.getElementById("delEvent");
+  delEvent.onclick = () => {
+    if (!delEvent.dataset.armed) { delEvent.dataset.armed = "1"; delEvent.textContent = "⚠️ Confirmer la suppression"; delEvent.classList.add("armed"); setTimeout(() => { if (document.body.contains(delEvent)) { delete delEvent.dataset.armed; delEvent.textContent = "Supprimer définitivement"; delEvent.classList.remove("armed"); } }, 5000); return; }
+    busy(delEvent, async () => {
+      await api("adminDelete", adminAuth(id, token));
+      forgetEvent(id);
+      location.hash = token === "super" ? "super" : "";
+    });
+  };
   const call = (btn, action, extra) => busy(btn, async () => renderAdmin(id, token, await api(action, Object.assign(adminAuth(id, token), extra))));
   const addName = document.getElementById("addName");
   if (addName) addName.onsubmit = e => {

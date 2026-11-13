@@ -294,6 +294,16 @@ const ACTIONS = {
     return { events: allEvents().map(ev => Object.assign(publicEvent(ev), { orgEmail: ev.orgEmail, created: ev.created })) };
   },
 
+  // L'organisateur (ou le super-admin) supprime définitivement son Secret Santa
+  adminDelete(req) {
+    return withLock(() => {
+      const ev = admin(req);
+      props().deleteProperty("ev_" + ev.id);
+      props().deleteProperty("fail_" + ev.id);
+      return { ok: true };
+    });
+  },
+
   superDelete(req) {
     checkSuper(req.superKey);
     return withLock(() => {
