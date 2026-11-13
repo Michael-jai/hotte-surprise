@@ -165,7 +165,9 @@ function adminView(ev) {
   return Object.assign(publicEvent(ev), {
     orgEmail: ev.orgEmail,
     // « seen » dit seulement si la personne a ouvert son tirage, jamais qui elle a tiré
-    participants: ev.participants.map(p => ({ id: p.id, name: p.name, email: p.email, seen: ev.status === "drawn" ? !!p.seen : undefined })),
+    participants: ev.participants.map(p => ({ id: p.id, name: p.name, email: p.email, seen: ev.status === "drawn" ? !!p.seen : undefined,
+      // Inscrits à la main par l'organisateur : il gère leur liste d'envies (qu'il a lui-même écrite)
+      byOrg: !!p.byOrg, wish: p.byOrg ? getWish(ev.id, p.id) : undefined })),
     exclusions: ev.exclusions,
     // Jamais le résultat du tirage : l'organisateur ne voit que le résultat de la vérification.
     verified: ev.status === "drawn" ? (() => { try { verify(ev.participants.map(p => p.id), ev.exclusions, ev.assign); return true; } catch (e) { return false; } })() : null
@@ -377,6 +379,16 @@ const ACTIONS = {
   },
 
   // Inscription forcée par l'organisateur, sans email : le code secret est envoyé à l'organisateur.
+  // L'organisateur remplit ou modifie la liste d'envies d'une personne qu'il a inscrite lui-même (avant ou après le tirage)
+  adminWish(req) {
+    const ev = admin(req);
+    const p = ev.participants.find(x => x.id === req.participantId);
+    if (!p) throw new Error("Participant introuvable.");
+    if (!p.byOrg) throw new Error("Seule la personne elle-même peut modifier sa liste d'envies.");
+    setWish(ev.id, p.id, req.wish);
+    return adminView(ev);
+  },
+
   adminAdd(req) {
     return withLock(() => {
       const ev = admin(req);

@@ -121,6 +121,8 @@ textarea:focus{outline:none;border-color:var(--green)}
 .wishbox h2{font-size:1.1rem}
 .wlines{display:flex;flex-direction:column;gap:6px;margin-top:4px}
 .wline{display:flex;align-items:center;gap:8px}
+.addwish{margin-top:8px}.addwish summary{cursor:pointer;color:var(--muted);font-size:.9rem;padding:4px 0}.addwish .wlines{margin-top:6px}
+ul.list li.wishrow{display:block}
 .wthumb{flex:0 0 40px;height:40px;border-radius:10px;background:var(--soft);display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:1.1rem}
 .wthumb img{max-width:100%;max-height:100%;object-fit:contain;background:#fff}
 .wline .winput{flex:1;min-width:0;padding:9px 12px}
@@ -562,9 +564,10 @@ async function renderAdmin(id, token, data){
     <div class="card">
       <h2>2. Inscrits (${data.participants.length}/${MAX_PEOPLE}) <button class="x" id="refresh" title="Actualiser">🔄 Actualiser</button></h2>
       ${data.participants.length ? "" : `<p class="muted">Personne pour l'instant. Les inscriptions apparaîtront ici.</p>`}
-      ${open ? `<form class="row" id="addName" style="margin-top:6px"><input id="addNameInput" placeholder="Inscrire quelqu'un sans email (prénom)" autocomplete="off"><button>Inscrire</button></form>
+      ${open ? `<form id="addName" style="margin-top:6px"><div class="row"><input id="addNameInput" placeholder="Inscrire quelqu'un sans email (prénom)" autocomplete="off"><button class="primary">Inscrire</button></div>
+      <details class="addwish"><summary>🎁 Ajouter sa liste d'envies (facultatif)</summary>${wishEditor("addWish", "")}</details></form>
       <p class="muted" style="margin:6px 0 0">Tu recevras son code secret par email, à lui transmettre.</p>` : ""}
-      <ul class="list">${data.participants.map(p => `<li><span class="pname">${esc(p.name)} <span class="muted">${p.email ? esc(p.email) : "sans email"}</span></span>${open ? `<button class="x" data-del="${esc(p.id)}" aria-label="Retirer ${esc(p.name)}">✕</button>` : (p.seen ? `<span class="seen">✅ vu</span>` : `<span class="unseen">⏳ pas vu${p.email ? ` <button class="x" data-resend="${esc(p.id)}">Relancer</button>` : ` <span class="muted">à prévenir</span>`}</span>`)}</li>`).join("")}</ul>
+      <ul class="list">${data.participants.map(p => `<li><span class="pname">${esc(p.name)} <span class="muted">${p.email ? esc(p.email) : "sans email"}</span>${p.byOrg ? ` <button class="x" data-wish="${esc(p.id)}">🎁 Envies${p.wish ? ` (${wishItems(p.wish).length})` : ""}</button>` : ""}</span>${open ? `<button class="x" data-del="${esc(p.id)}" aria-label="Retirer ${esc(p.name)}">✕</button>` : (p.seen ? `<span class="seen">✅ vu</span>` : `<span class="unseen">⏳ pas vu${p.email ? ` <button class="x" data-resend="${esc(p.id)}">Relancer</button>` : ` <span class="muted">à prévenir</span>`}</span>`)}</li>`).join("")}</ul>
       ${!open && data.participants.length ? (() => { const seen = data.participants.filter(p => p.seen).length, n = data.participants.length, todo = data.participants.filter(p => !p.seen && p.email).length;
         return `<div class="seenbar"><div style="width:${Math.round(seen / n * 100)}%"></div></div>
         <p class="muted" style="margin:6px 0 0">👀 <strong>${seen}/${n}</strong> ont découvert leur tirage.${seen === n ? " Tout le monde l'a vu 🎉" : ""}</p>
@@ -610,8 +613,19 @@ async function renderAdmin(id, token, data){
   if (addName) addName.onsubmit = e => {
     e.preventDefault();
     const name = document.getElementById("addNameInput").value.trim();
-    if (name) call(addName.querySelector("button"), "adminAdd", { name });
+    if (name) call(addName.querySelector("button.primary"), "adminAdd", { name, wish: getAddWish() });
   };
+  const getAddWish = bindWishEditor("addWish");
+  // Liste d'envies d'une personne inscrite à la main : l'organisateur peut la remplir et la modifier
+  app().querySelectorAll("[data-wish]").forEach(b => b.onclick = () => {
+    const li = b.closest("li"), next = li.nextElementSibling;
+    if (next && next.classList.contains("wishrow")) return next.remove();
+    const p = data.participants.find(x => x.id === b.dataset.wish);
+    li.insertAdjacentHTML("afterend", `<li class="wishrow"><div style="width:100%"><p class="muted" style="margin:0 0 6px">Liste d'envies de <strong>${esc(p.name)}</strong>, visible par la personne qui la tirera au sort.</p>
+      ${wishEditor("wishOf" + p.id, p.wish || "")}<div class="wish-foot"><span></span><button class="primary">Enregistrer</button></div></div></li>`);
+    const row = li.nextElementSibling, get = bindWishEditor("wishOf" + p.id);
+    row.querySelector("button.primary").onclick = e => call(e.currentTarget, "adminWish", { participantId: p.id, wish: get() });
+  });
   document.getElementById("refresh").onclick = e => call(e.currentTarget, "adminGet");
   app().querySelectorAll("[data-del]").forEach(b => b.onclick = () => call(b, "adminUpdate", { removeId: b.dataset.del }));
   const remindAll = document.getElementById("remindAll");
