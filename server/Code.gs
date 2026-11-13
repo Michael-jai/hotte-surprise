@@ -1,10 +1,7 @@
-/**
- * Hotte Surprise : petit serveur Secret Santa sur Google Apps Script.
- * Stocke les événements dans les propriétés du script et envoie les emails depuis ton compte Google.
- *
- * Déploiement : Déployer > Nouveau déploiement > Application Web
- *   Exécuter en tant que : Moi · Qui a accès : Tout le monde
- */
+// Hotte Surprise : petit serveur Secret Santa sur Google Apps Script.
+// Déploiement : Déployer > Nouveau déploiement > Application Web
+//   Exécuter en tant que : Moi · Qui a accès : Tout le monde
+// FIN DU FICHIER : la dernière ligne est « // ===== FIN ===== ».
 const SITE = "https://michael-jai.github.io/hotte-surprise/";
 const CODE_DIGITS = 6;          // longueur du code secret envoyé à chaque participant
 const MAX_PARTICIPANTS = 60;
@@ -234,3 +231,4 @@ const ACTIONS = {
     return { ok: true };
   }
 };
+// ===== FIN =====
