@@ -281,10 +281,12 @@ function renderHome(){
 }
 
 // ---------- Espace organisateur ----------
+const superKey = () => { try { return sessionStorage.getItem("hotte-super") || ""; } catch(e){ return ""; } };
+const adminAuth = (id, token) => token === "super" ? { eventId:id, superKey: superKey() } : { eventId:id, adminToken:token };
 async function renderAdmin(id, token, data){
   setTimeout(() => document.body.classList.add("ready"), 600);
-  if (!data) { loading(); try { data = await api("adminGet", { eventId:id, adminToken:token }); } catch(e){ return fail(e.message); } }
-  rememberEvent({ id, token, name: data.name });
+  if (!data) { loading(); try { data = await api("adminGet", adminAuth(id, token)); } catch(e){ return fail(e.message); } }
+  if (token !== "super") rememberEvent({ id, token, name: data.name });
   document.title = data.name + " · Organisateur";
   const joinUrl = baseUrl() + "#e=" + id;
   const invite = `🎄 Tu es invité·e au Secret Santa « ${data.name} » ! Inscris-toi ici avec ton email : ${joinUrl}`;
@@ -293,7 +295,7 @@ async function renderAdmin(id, token, data){
   const open = data.status === "open";
   app().innerHTML = `
     ${hero()}
-    <div class="title"><h1>${esc(data.name)}</h1><p class="sub">Espace organisateur · garde ce lien pour toi</p></div>
+    <div class="title"><h1>${esc(data.name)}</h1><p class="sub">${token === "super" ? `Super-admin · organisateur : ${esc(data.orgEmail)} · <a href="#super" style="color:#fff">← tous les Secret Santa</a>` : "Espace organisateur · garde ce lien pour toi"}</p></div>
 
     <div class="card">
       <h2>1. Invite les participants</h2>
@@ -331,7 +333,7 @@ async function renderAdmin(id, token, data){
     </div>`}
     <p id="msg" class="hidden"></p>`;
   bindCopy(app());
-  const call = (btn, action, extra) => busy(btn, async () => renderAdmin(id, token, await api(action, Object.assign({ eventId:id, adminToken:token }, extra))));
+  const call = (btn, action, extra) => busy(btn, async () => renderAdmin(id, token, await api(action, Object.assign(adminAuth(id, token), extra))));
   const addName = document.getElementById("addName");
   if (addName) addName.onsubmit = e => {
     e.preventDefault();
@@ -340,7 +342,7 @@ async function renderAdmin(id, token, data){
   };
   document.getElementById("refresh").onclick = e => call(e.currentTarget, "adminGet");
   app().querySelectorAll("[data-del]").forEach(b => b.onclick = () => call(b, "adminUpdate", { removeId: b.dataset.del }));
-  app().querySelectorAll("[data-resend]").forEach(b => b.onclick = () => busy(b, async () => { await api("adminResend", { eventId:id, adminToken:token, participantId: b.dataset.resend }); b.textContent = "Envoyé ✓"; }));
+  app().querySelectorAll("[data-resend]").forEach(b => b.onclick = () => busy(b, async () => { await api("adminResend", Object.assign(adminAuth(id, token), { participantId: b.dataset.resend })); b.textContent = "Envoyé ✓"; }));
   app().querySelectorAll("[data-delex]").forEach(b => b.onclick = () => { const ex = data.exclusions.slice(); ex.splice(+b.dataset.delex,1); call(b, "adminUpdate", { exclusions: ex }); });
   const addEx = document.getElementById("addEx");
   if (addEx) addEx.onclick = () => {
@@ -420,9 +422,54 @@ async function renderEvent(id, token){
   };
 }
 
+// ---------- Super-admin : tous les Secret Santa ----------
+async function renderSuper(){
+  setTimeout(() => document.body.classList.add("ready"), 600);
+  document.title = "Super-admin · Hotte Surprise";
+  const key = superKey();
+  if (!key) {
+    loading();
+    let st; try { st = await api("superStatus", {}); } catch(e){ return fail(e.message); }
+    app().innerHTML = `${hero(true)}
+      <div class="card"><h2>🔐 Super-admin</h2>
+        <p class="muted" style="margin-top:0">${st.configured ? "Entre le mot de passe administrateur pour gérer tous les Secret Santa." : "Crée ton mot de passe administrateur (8 caractères minimum). Il ne pourra être créé qu'une seule fois."}</p>
+        <form id="sform" class="row"><input id="skey" type="password" autocomplete="${st.configured ? "current-password" : "new-password"}" placeholder="Mot de passe" required><button class="primary">${st.configured ? "Entrer" : "Créer"}</button></form>
+      </div><p id="msg" class="hidden"></p>`;
+    document.getElementById("sform").onsubmit = e => {
+      e.preventDefault();
+      busy(e.target.querySelector("button"), async () => {
+        const k = document.getElementById("skey").value;
+        if (!st.configured) await api("superSetup", { superKey: k });
+        await api("superList", { superKey: k });
+        try { sessionStorage.setItem("hotte-super", k); } catch(err){}
+        renderSuper();
+      });
+    };
+    return;
+  }
+  loading();
+  let list;
+  try { list = (await api("superList", { superKey: key })).events; }
+  catch(e){ try { sessionStorage.removeItem("hotte-super"); } catch(err){} return fail(e.message); }
+  app().innerHTML = `${hero(true)}
+    <div class="title"><h1>Super-admin</h1><p class="sub">${list.length} Secret Santa · tu peux tout gérer, mais pas voir les tirages</p></div>
+    <div class="card"><ul class="list">${list.length ? list.map(ev => `
+      <li class="send" data-row="${esc(ev.id)}"><div><strong>${esc(ev.name)}</strong> <span class="muted">${ev.status === "drawn" ? "🎉 tirage fait" : "📝 inscriptions ouvertes"} · ${ev.count} inscrit${ev.count>1?"s":""}</span><br>
+        <span class="muted">${esc(ev.orgEmail)}${ev.created ? " · créé le " + esc(new Date(ev.created).toLocaleDateString("fr-FR")) : ""}</span></div>
+        <div class="actions"><a class="btn sms" href="#admin=${esc(ev.id)}.super">Gérer</a><a class="btn wa" href="#e=${esc(ev.id)}" target="_blank" rel="noopener">Page publique</a><button data-sdel="${esc(ev.id)}">🗑 Supprimer</button></div></li>`).join("") : `<li class="muted">Aucun Secret Santa pour l'instant.</li>`}</ul></div>
+    <p style="text-align:center"><button id="logout">Se déconnecter</button></p>
+    <p id="msg" class="hidden"></p>`;
+  document.getElementById("logout").onclick = () => { try { sessionStorage.removeItem("hotte-super"); } catch(e){} renderSuper(); };
+  app().querySelectorAll("[data-sdel]").forEach(b => b.onclick = () => {
+    if (b.dataset.armed) return busy(b, async () => { await api("superDelete", { superKey: key, eventId: b.dataset.sdel }); renderSuper(); });
+    b.dataset.armed = "1"; b.textContent = "Confirmer la suppression ?"; b.classList.add("primary");
+  });
+}
+
 function route(){
   document.body.classList.remove("ready");
   const h = new URLSearchParams(location.hash.slice(1));
+  if (location.hash === "#super") return renderSuper();
   if (h.get("admin")) { const [id, token] = h.get("admin").split("."); return renderAdmin(id, token); }
   if (h.get("e")) return renderEvent(h.get("e"), h.get("t"));
   renderHome();

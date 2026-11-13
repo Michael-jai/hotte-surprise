@@ -55,8 +55,25 @@ function publicEvent(ev) {
 }
 function admin(req) {
   const ev = load(req.eventId);
+  if (req.superKey) { checkSuper(req.superKey); return ev; }
   if (hash(req.adminToken) !== ev.adminHash) throw new Error("Lien organisateur invalide.");
   return ev;
+}
+
+// ---------- Super-admin : gère tous les Secret Santa (sans jamais voir les tirages) ----------
+function checkSuper(key) {
+  const h = props().getProperty("SUPER_KEY_HASH");
+  if (!h) throw new Error("Le mot de passe administrateur n'est pas encore créé.");
+  if (tooManyFailures("super", false)) throw new Error("Trop d'essais. Réessaie dans 15 minutes.");
+  if (hash("super:" + key) !== h) { tooManyFailures("super", true); throw new Error("Mot de passe administrateur incorrect."); }
+}
+function allEvents() {
+  const all = props().getProperties(), list = [];
+  Object.keys(all).forEach(k => {
+    if (k.indexOf("ev_") !== 0) return;
+    try { list.push(JSON.parse(all[k])); } catch (e) {}
+  });
+  return list.sort((a, b) => String(b.created).localeCompare(String(a.created)));
 }
 function adminView(ev) {
   return Object.assign(publicEvent(ev), {
@@ -201,6 +218,34 @@ const ACTIONS = {
   },
 
   adminGet(req) { return adminView(admin(req)); },
+
+  superStatus() { return { configured: !!props().getProperty("SUPER_KEY_HASH") }; },
+
+  // Création unique du mot de passe administrateur (refusée s'il existe déjà)
+  superSetup(req) {
+    return withLock(() => {
+      if (props().getProperty("SUPER_KEY_HASH")) throw new Error("Le mot de passe administrateur existe déjà.");
+      const key = String(req.superKey || "");
+      if (key.length < 8) throw new Error("Choisis un mot de passe d'au moins 8 caractères.");
+      props().setProperty("SUPER_KEY_HASH", hash("super:" + key));
+      return { ok: true };
+    });
+  },
+
+  superList(req) {
+    checkSuper(req.superKey);
+    return { events: allEvents().map(ev => Object.assign(publicEvent(ev), { orgEmail: ev.orgEmail, created: ev.created })) };
+  },
+
+  superDelete(req) {
+    checkSuper(req.superKey);
+    return withLock(() => {
+      load(req.eventId);
+      props().deleteProperty("ev_" + req.eventId);
+      props().deleteProperty("fail_" + req.eventId);
+      return { ok: true };
+    });
+  },
 
   // Inscription forcée par l'organisateur, sans email : le code secret est envoyé à l'organisateur.
   adminAdd(req) {
