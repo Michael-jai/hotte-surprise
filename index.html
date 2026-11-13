@@ -319,23 +319,20 @@ async function googleButton(el, done){
   google.accounts.id.renderButton(el, { theme: "filled_blue", size: "large", shape: "pill", text: "signin_with", locale: "fr" });
 }
 
-function myEvents(){ try { return JSON.parse(localStorage.getItem("hotte-admin") || "[]"); } catch(e){ return []; } }
-function forgetEvent(id){ try { localStorage.setItem("hotte-admin", JSON.stringify(myEvents().filter(x => x.id !== id))); } catch(err){} }
-function rememberEvent(e){ const l = myEvents().filter(x => x.id !== e.id); l.unshift(e); try { localStorage.setItem("hotte-admin", JSON.stringify(l.slice(0,10))); } catch(err){} }
 
 // ---------- Accueil : créer un Secret Santa ----------
 function renderHome(){
   setTimeout(() => document.body.classList.add("ready"), 600);
   document.title = "Hotte Surprise";
   const g = GOOGLE_CLIENT_ID ? googleSession() : null, needLogin = GOOGLE_CLIENT_ID && !g;
-  const mine = myEvents();
+  try { localStorage.removeItem("hotte-admin"); } catch(e){}  // plus de liste gardée dans le navigateur
   app().innerHTML = `
     ${hero()}
     <div class="title">
       <h1>Hotte <span>Surprise</span></h1>
       <p class="sub">Chacun s'inscrit avec son email, tu lances le tirage, chacun reçoit le sien par email. Personne, pas même toi, ne voit qui offre à qui.</p>
     </div>
-    <div id="mine">${mine.length ? mineCard(mine) : ""}</div>
+    <div id="mine"></div>
     <div class="card">
       <h2>🎄 Créer un Secret Santa</h2>
       <p class="muted" style="margin-top:0">Jusqu'à ${MAX_PEOPLE} participants par Secret Santa.</p>
@@ -361,29 +358,23 @@ function renderHome(){
       if (GOOGLE_CLIENT_ID && !gs) { renderHome(); throw new Error("Ta connexion Google a expiré, reconnecte-toi."); }
       const r = await api("createEvent", gs ? { name: v("name"), budget: v("budget"), date: v("date"), idToken: gs.token }
                                              : { name: v("name"), budget: v("budget"), date: v("date"), orgEmail: v("email") });
-      rememberEvent({ id: r.eventId, token: r.adminToken, name: v("name") });
       location.hash = "admin=" + r.eventId + "." + r.adminToken;
     });
   };
   if (needLogin) googleButton(document.getElementById("gbtn"), renderHome);
   const lo = document.getElementById("logout");
   if (lo) lo.onclick = e => { e.preventDefault(); googleLogout(); renderHome(); };
-  refreshMine(mine, g);
+  if (g) refreshMine(g);
 }
-// Nettoie « Mes Secret Santa » : retire ceux supprimés sur le serveur, ajoute ceux du compte Google (tous appareils)
-async function refreshMine(mine, g){
-  const gone = id => api("getEvent", { eventId: id }).then(() => false, e => /n'existe pas/.test(e.message));
-  const checks = await Promise.all(mine.map(e => gone(e.id)));
-  let list = mine.filter((e, i) => !checks[i]);
-  if (list.length !== mine.length) mine.filter((e, i) => checks[i]).forEach(e => forgetEvent(e.id));
-  if (g) { try {
-    const r = await api("myEvents", { idToken: g.token }), known = new Set(list.map(e => e.id));
-    list = list.concat(r.events.filter(e => !known.has(e.id)).map(e => ({ id: e.id, token: "g", name: e.name })));
-  } catch(e){} }
-  const box = document.getElementById("mine");
-  if (box) box.innerHTML = list.length ? mineCard(list) : "";
+// « Mes Secret Santa » : uniquement ceux du compte Google connecté, lus sur le serveur
+async function refreshMine(g){
+  try {
+    const r = await api("myEvents", { idToken: g.token }), box = document.getElementById("mine");
+    if (box) box.innerHTML = mineCard(r.events.map(e => ({ id: e.id, token: "g", name: e.name })));
+  } catch(e){}
 }
 function mineCard(list){
+  if (!list.length) return `<div class="card"><h2>Mes Secret Santa</h2><p class="muted" style="margin:0">Aucun pour l'instant. Crée le premier ci-dessous 🎄</p></div>`;
   return `<div class="card"><h2>Mes Secret Santa</h2><ul class="list">${list.map(e => `<li class="mine"><a href="#admin=${esc(e.id)}.${esc(e.token)}"><span>${esc(e.name)}</span><span class="muted">gérer →</span></a></li>`).join("")}</ul></div>`;
 }
 
@@ -393,8 +384,7 @@ const adminAuth = (id, token) => token === "super" ? { eventId:id, superKey: sup
   : token === "g" ? { eventId:id, idToken: (googleSession() || {}).token || "" } : { eventId:id, adminToken:token };
 async function renderAdmin(id, token, data){
   setTimeout(() => document.body.classList.add("ready"), 600);
-  if (!data) { loading(); try { data = await api("adminGet", adminAuth(id, token)); } catch(e){ if (/n'existe pas/.test(e.message)) forgetEvent(id); return fail(e.message); } }
-  if (token !== "super" && token !== "g") rememberEvent({ id, token, name: data.name });
+  if (!data) { loading(); try { data = await api("adminGet", adminAuth(id, token)); } catch(e){ return fail(e.message); } }
   document.title = data.name + " · Organisateur";
   const joinUrl = baseUrl() + "#e=" + id;
   const invite = `🎄 Tu es invité·e au Secret Santa « ${data.name} » ! Inscris-toi ici avec ton email : ${joinUrl}`;
@@ -455,7 +445,6 @@ async function renderAdmin(id, token, data){
     if (!delEvent.dataset.armed) { delEvent.dataset.armed = "1"; delEvent.textContent = "⚠️ Confirmer la suppression"; delEvent.classList.add("armed"); setTimeout(() => { if (document.body.contains(delEvent)) { delete delEvent.dataset.armed; delEvent.textContent = "Supprimer définitivement"; delEvent.classList.remove("armed"); } }, 5000); return; }
     busy(delEvent, async () => {
       await api("adminDelete", adminAuth(id, token));
-      forgetEvent(id);
       location.hash = token === "super" ? "super" : "";
     });
   };

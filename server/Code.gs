@@ -80,11 +80,14 @@ function googleEmail(idToken) {
   return String(t.email).toLowerCase();
 }
 
+// Propriétaire : le compte Google qui l'a créé, ou (anciens Secret Santa) l'email organisateur identique
+function isOwner(ev, email) { return !!email && (ev.owner ? ev.owner === email : normEmail(ev.orgEmail) === email); }
+
 function admin(req) {
   const ev = load(req.eventId);
   if (req.superKey) { checkSuper(req.superKey); return ev; }
   if (req.idToken) {
-    if (ev.owner && googleEmail(req.idToken) === ev.owner) return ev;
+    if (isOwner(ev, googleEmail(req.idToken))) return ev;
     throw new Error("Ce Secret Santa n'appartient pas à ton compte Google.");
   }
   if (hash(req.adminToken) !== ev.adminHash) throw new Error("Lien organisateur invalide.");
@@ -273,7 +276,7 @@ const ACTIONS = {
   // Les Secret Santa du compte Google connecté (sur tous les appareils)
   myEvents(req) {
     const email = googleEmail(req.idToken);
-    return { email, events: allEvents().filter(ev => ev.owner === email).map(ev => Object.assign(publicEvent(ev), { created: ev.created })) };
+    return { email, events: allEvents().filter(ev => isOwner(ev, email)).map(ev => Object.assign(publicEvent(ev), { created: ev.created })) };
   },
 
   superStatus() { return { configured: !!props().getProperty("SUPER_KEY_HASH") }; },
