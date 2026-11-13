@@ -6,7 +6,9 @@ const SITE = "https://michael-jai.github.io/hotte-surprise/";
 const CODE_DIGITS = 6;          // longueur du code secret envoyé à chaque participant
 const MAX_PARTICIPANTS = 40;     // limite liée à la taille de stockage (9 Ko par Secret Santa)
 const MAX_EVENTS_PER_DAY = 10;   // anti-abus : créations de Secret Santa par jour sur tout le site
-const MAX_CODE_FAILURES = 10;    // anti-devinette : codes faux tolérés par heure et par Secret Santa
+const MAX_CODE_FAILURES = 10;
+// Connexion Google pour les organisateurs : ID client OAuth (public). Vide = création libre sans connexion.
+const GOOGLE_CLIENT_ID = "";    // anti-devinette : codes faux tolérés par heure et par Secret Santa
 
 function doPost(e) {
   let out;
@@ -65,9 +67,26 @@ const escHtml = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&
 function publicEvent(ev) {
   return { id: ev.id, name: ev.name, budget: ev.budget, date: ev.date, status: ev.status, count: ev.participants.length };
 }
+// Vérifie un jeton de connexion Google et renvoie l'email du compte
+function googleEmail(idToken) {
+  if (!GOOGLE_CLIENT_ID) throw new Error("La connexion Google n'est pas configurée.");
+  if (!idToken) throw new Error("Connecte-toi avec Google.");
+  const res = UrlFetchApp.fetch("https://oauth2.googleapis.com/tokeninfo?id_token=" + encodeURIComponent(idToken), { muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) throw new Error("Connexion Google expirée. Reconnecte-toi.");
+  const t = JSON.parse(res.getContentText());
+  if (t.aud !== GOOGLE_CLIENT_ID || ["accounts.google.com", "https://accounts.google.com"].indexOf(t.iss) < 0 ||
+      String(t.email_verified) !== "true" || Number(t.exp) * 1000 < Date.now())
+    throw new Error("Connexion Google invalide. Reconnecte-toi.");
+  return String(t.email).toLowerCase();
+}
+
 function admin(req) {
   const ev = load(req.eventId);
   if (req.superKey) { checkSuper(req.superKey); return ev; }
+  if (req.idToken) {
+    if (ev.owner && googleEmail(req.idToken) === ev.owner) return ev;
+    throw new Error("Ce Secret Santa n'appartient pas à ton compte Google.");
+  }
   if (hash(req.adminToken) !== ev.adminHash) throw new Error("Lien organisateur invalide.");
   return ev;
 }
@@ -166,16 +185,19 @@ function verify(ids, exclusions, res) {
 const ACTIONS = {
   createEvent(req) {
     // Anti-abus : nombre de créations limité par jour (chaque création envoie un email)
+    if (GOOGLE_CLIENT_ID && !req.idToken) throw new Error("Connecte-toi avec Google pour créer un Secret Santa.");
     const dayKey = "day_" + new Date().toISOString().slice(0, 10);
     const today = Number(props().getProperty(dayKey) || 0);
     if (today >= MAX_EVENTS_PER_DAY) throw new Error("Trop de Secret Santa créés aujourd'hui. Réessaie demain.");
     props().setProperty(dayKey, String(today + 1));
-    const name = clean(req.name), orgEmail = normEmail(req.orgEmail);
+    // Avec la connexion Google activée, il faut être connecté pour créer, et l'email du compte devient celui de l'organisateur
+    const owner = GOOGLE_CLIENT_ID ? googleEmail(req.idToken) : "";
+    const name = clean(req.name), orgEmail = owner || normEmail(req.orgEmail);
     if (!name) throw new Error("Donne un nom au Secret Santa.");
     if (!isEmail(orgEmail)) throw new Error("Adresse email de l'organisateur invalide.");
     const ev = {
       id: rand(10), name, budget: clean(req.budget, 30), date: clean(req.date, 10), orgEmail,
-      status: "open", participants: [], exclusions: [], assign: null, created: new Date().toISOString()
+      status: "open", participants: [], exclusions: [], assign: null, created: new Date().toISOString(), owner
     };
     const token = rand(24);
     ev.adminHash = hash(token);
@@ -239,6 +261,15 @@ const ACTIONS = {
   },
 
   adminGet(req) { return adminView(admin(req)); },
+
+  // Configuration publique pour le site
+  config() { return { googleClientId: GOOGLE_CLIENT_ID }; },
+
+  // Les Secret Santa du compte Google connecté (sur tous les appareils)
+  myEvents(req) {
+    const email = googleEmail(req.idToken);
+    return { email, events: allEvents().filter(ev => ev.owner === email).map(ev => Object.assign(publicEvent(ev), { created: ev.created })) };
+  },
 
   superStatus() { return { configured: !!props().getProperty("SUPER_KEY_HASH") }; },
 
