@@ -105,6 +105,17 @@ ul.list li:first-child{border-top:0}
 .seenbar div{height:100%;background:linear-gradient(90deg,var(--green),#2fa66b);border-radius:99px;transition:width .6s}
 .card.danger{border-top-color:#7a1414}
 button.armed{background:var(--red);color:#fff;border-color:var(--red)}
+textarea{width:100%;box-sizing:border-box;padding:12px 14px;border:2px solid var(--line);border-radius:14px;background:var(--field);color:var(--ink);font:inherit;resize:vertical;min-height:84px}
+textarea:focus{outline:none;border-color:var(--green)}
+.wish{margin:14px 0 4px;padding:12px 14px;border-radius:14px;background:var(--soft);text-align:left;border-left:5px solid var(--green)}
+.wish-title{margin:0 0 6px;font-weight:800}
+.wish-text{margin:0;white-space:pre-wrap;word-break:break-word}
+.wish-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:10px}
+.wishbox h2{font-size:1.1rem}
+.ideas{margin:10px 0 4px;text-align:left}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.card a.chip{display:inline-block;padding:6px 12px;border-radius:99px;background:#232f3e;color:#fff;font-weight:600;font-size:.88rem;text-decoration:none;border-bottom:3px solid #ff9900}
+.card a.chip:hover{background:#37475a}
 ul.list li.mine{padding:0}
 ul.list li.mine a{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;padding:10px 4px;text-decoration:none}
 ul.list li.mine a span:first-child{text-decoration:underline}
@@ -158,8 +169,46 @@ function tickCountdowns(){
 setInterval(tickCountdowns, 1000);
 new MutationObserver(() => { if (document.querySelector(".countdown:empty")) tickCountdowns(); }).observe(document.documentElement, { childList: true, subtree: true });
 
+// ---------- Ma liste d'envies (modifiable avec le lien perso ou le code secret) ----------
+const MAX_WISH = 400;
+function wishCard(mw){
+  return `<div class="card">
+    <h2>✏️ Ma liste d'envies</h2>
+    <p class="muted" style="margin-top:0">Visible uniquement par la personne qui t'a tiré au sort. Idées, tailles, ce que tu n'aimes pas…</p>
+    <textarea id="wishText" maxlength="${MAX_WISH}" rows="4" placeholder="Ex. : un livre de cuisine, des chaussettes rigolotes (pointure 42), pas de chocolat">${esc(mw || "")}</textarea>
+    <div class="wish-foot"><span class="muted" id="wishCount"></span><button class="primary" id="wishSave">Enregistrer</button></div>
+    <p id="wishMsg" class="ok hidden"></p>
+  </div>`;
+}
+function bindWish(auth){
+  const t = document.getElementById("wishText"), c = document.getElementById("wishCount");
+  if (!t) return;
+  const count = () => c.textContent = `${t.value.length}/${MAX_WISH}`; count(); t.oninput = count;
+  const btn = document.getElementById("wishSave");
+  btn.onclick = () => busy(btn, async () => {
+    const m = document.getElementById("wishMsg"); m.classList.add("hidden");
+    const r = await api("updateWish", Object.assign({ wish: t.value }, auth));
+    t.value = r.mw; count(); m.textContent = r.mw ? "✓ Liste d'envies enregistrée" : "✓ Liste d'envies effacée"; m.classList.remove("hidden");
+  });
+}
+
+// ---------- Idées cadeaux : recherches Amazon.fr filtrées au budget ----------
+function budgetMax(b){ const m = String(b || "").replace(",", ".").match(/\d+(\.\d+)?/g); return m ? Math.max(...m.map(Number)) : 0; }
+function amazonUrl(q, max){ return "https://www.amazon.fr/s?k=" + encodeURIComponent(q) + (max ? "&rh=p_36%3A-" + Math.round(max * 100) : ""); }
+function amazonIdeas(wish, budget){
+  const max = budgetMax(budget);
+  const fromWish = String(wish || "").split(/[\n,;•]+/).map(x => x.replace(/\(.*?\)/g, "").replace(/^[-*\s]+/, "").trim()).filter(x => x.length >= 3 && x.length <= 60 && !/^pas\b|^aucun|^sauf\b/i.test(x)).slice(0, 4);
+  const generic = ["idée cadeau secret santa", "jeu de société", "mug rigolo", "bougie parfumée", "chaussettes de Noël", "gadget insolite"];
+  const chips = fromWish.map(q => [q, "⭐"]).concat(generic.slice(0, 6 - Math.min(fromWish.length, 3)).map(q => [q, ""]));
+  return `<div class="ideas">
+    <p class="wish-title">💡 Idées sur Amazon${max ? ` jusqu'à ${max} €` : ""}</p>
+    <div class="chips">${chips.map(([q, star]) => `<a class="chip" target="_blank" rel="noopener" href="${esc(amazonUrl(q, max))}">${star ? star + " " : ""}${esc(q)}</a>`).join("")}</div>
+    <p class="muted" style="margin:6px 0 0;font-size:.8rem">⭐ = d'après sa liste d'envies. Ouvre Amazon.fr, prix filtrés au budget.</p>
+  </div>`;
+}
+
 // ---------- Mode révélation ----------
-function renderReveal(data){
+function renderReveal(data, auth){
   document.title = "Ton Secret Santa";
   const app = document.getElementById("app");
   app.innerHTML = `
@@ -180,10 +229,17 @@ function renderReveal(data){
         <div class="big">${esc(data.r)}</div>
         ${data.b ? `<p>💰 Budget : <strong>${esc(data.b)}</strong></p>` : ""}
         ${data.d ? `<p>📅 Échange des cadeaux : <strong>${esc(new Date(data.d).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"}))}</strong></p>` : ""}
+        <div class="wish">
+          <p class="wish-title">🎁 Sa liste d'envies</p>
+          ${data.w ? `<p class="wish-text">${esc(data.w)}</p>` : `<p class="muted" style="margin:0">${esc(data.r)} n'a pas encore écrit de liste d'envies. Reviens plus tard, elle peut l'ajouter à tout moment.</p>`}
+        </div>
+        ${amazonIdeas(data.w, data.b)}
         ${countdown(data.d)}
         <p class="muted">Chut, c'est un secret 🤫</p>
       </div>
-    </div>`;
+    </div>
+    ${auth ? `<div id="mywish" class="hidden">${wishCard(data.mw)}</div>` : ""}`;
+  if (auth) bindWish(auth);
   const open = () => {
     const box = document.getElementById("box");
     if (box.classList.contains("open")) return;
@@ -193,6 +249,7 @@ function renderReveal(data){
     setTimeout(() => {
       document.getElementById("hide").classList.add("hidden");
       document.getElementById("show").classList.remove("hidden");
+      const mw = document.getElementById("mywish"); if (mw) mw.classList.remove("hidden");
     }, 700);
   };
   document.getElementById("btn").onclick = open;
@@ -488,7 +545,8 @@ async function renderEvent(id, token){
   if (token) {
     try {
       const r = await api("reveal", { eventId:id, token });
-      if (!r.waiting) return renderReveal(r);
+      if (!r.waiting) return renderReveal(r, { eventId:id, token });
+      var waitingWish = r;
     } catch(e){ /* lien invalide : on affiche la page normale */ }
   }
   let ev;
@@ -509,6 +567,9 @@ async function renderEvent(id, token){
       <form id="join">
         <label>Ton prénom</label><input id="jname" required autocomplete="given-name">
         <label>Ton email</label><input id="jemail" type="email" required autocomplete="email">
+        <label>Ma liste d'envies <span class="muted" style="font-weight:400">(facultatif, modifiable plus tard)</span></label>
+        <textarea id="jwish" maxlength="${MAX_WISH}" rows="3" placeholder="Idées de cadeaux, tailles, ce que tu n'aimes pas…"></textarea>
+        <p class="muted" style="margin:4px 0 0;font-size:.85rem">Seule la personne qui te tirera au sort la verra.</p>
         <button class="primary big" style="margin-top:16px">Je participe</button>
       </form>
       <div id="joined" class="hidden"></div>
@@ -516,6 +577,7 @@ async function renderEvent(id, token){
     <div class="card">
       <h2>🎁 Découvrir mon tirage</h2>
       <p class="muted" style="margin-top:0">${open ? "Le tirage n'a pas encore eu lieu. Tu recevras un email dès qu'il sera fait." : "Clique sur le lien reçu par email, ou entre simplement ton code secret."}</p>
+      <div id="waitWish"></div>
       <form id="find">
         <div class="row"><input id="fcode" inputmode="numeric" pattern="[0-9 ]*" placeholder="Ton code secret" required autocomplete="one-time-code" style="font-size:1.3rem;letter-spacing:.3em;text-align:center"><button class="primary">Voir</button></div>
       </form>
@@ -525,7 +587,7 @@ async function renderEvent(id, token){
   if (join) join.onsubmit = e => {
     e.preventDefault();
     busy(join.querySelector("button"), async () => {
-      const r = await api("register", { eventId:id, name: document.getElementById("jname").value.trim(), email: document.getElementById("jemail").value.trim() });
+      const r = await api("register", { eventId:id, name: document.getElementById("jname").value.trim(), email: document.getElementById("jemail").value.trim(), wish: document.getElementById("jwish").value });
       join.classList.add("hidden");
       const j = document.getElementById("joined");
       j.innerHTML = `<p class="ok">✓ ${r.again ? "Te revoilà" : "C'est noté"}, ${esc(r.name)} !</p><p>Ton code secret vient de t'être envoyé par email${r.again ? " (c'est un nouveau code, l'ancien ne marche plus)" : ""}. Regarde aussi dans tes spams. Garde-le précieusement jusqu'au tirage.</p>`;
@@ -535,11 +597,20 @@ async function renderEvent(id, token){
   document.getElementById("find").onsubmit = e => {
     e.preventDefault();
     busy(e.target.querySelector("button"), async () => {
-      const r = await api("reveal", { eventId:id, code: document.getElementById("fcode").value.trim() });
-      if (r.waiting) throw new Error(`Patience ${r.name}, le tirage n'a pas encore eu lieu !`);
-      renderReveal(r);
+      const code = document.getElementById("fcode").value.trim();
+      const r = await api("reveal", { eventId:id, code });
+      if (r.waiting) return showWaitWish(r, { eventId:id, code });
+      renderReveal(r, { eventId:id, code });
     });
   };
+  if (waitingWish) showWaitWish(waitingWish, { eventId:id, token });
+}
+// Avant le tirage : la personne identifiée peut écrire ou modifier sa liste d'envies
+function showWaitWish(r, auth){
+  const box = document.getElementById("waitWish");
+  box.innerHTML = `<p class="ok" style="margin-top:0">Patience ${esc(r.name)}, le tirage n'a pas encore eu lieu !</p>${wishCard(r.mw).replace('<div class="card">', '<div class="wishbox">')}`;
+  bindWish(auth);
+  document.getElementById("find").classList.add("hidden");
 }
 
 // ---------- Super-admin : tous les Secret Santa ----------

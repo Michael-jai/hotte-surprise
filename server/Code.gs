@@ -83,6 +83,35 @@ function googleEmail(idToken) {
 // Propriétaire : le compte Google qui l'a créé, ou (anciens Secret Santa) l'email organisateur identique
 function isOwner(ev, email) { return !!email && (ev.owner ? ev.owner === email : normEmail(ev.orgEmail) === email); }
 
+// ---------- Listes d'envies (une propriété par participant, hors de l'événement pour ne pas dépasser 9 Ko) ----------
+const MAX_WISH = 400;
+const wishKey = (evId, pid) => "wish_" + evId + "_" + pid;
+function getWish(evId, pid) { return props().getProperty(wishKey(evId, pid)) || ""; }
+function setWish(evId, pid, text) {
+  const w = String(text || "").replace(/\r/g, "").replace(/[\u0000-\u0009\u000b-\u001f]/g, "").trim().slice(0, MAX_WISH);
+  if (w) props().setProperty(wishKey(evId, pid), w); else props().deleteProperty(wishKey(evId, pid));
+  return w;
+}
+function deleteEventData(evId) {
+  const all = props().getProperties();
+  Object.keys(all).forEach(k => { if (k.indexOf("wish_" + evId + "_") === 0) props().deleteProperty(k); });
+  props().deleteProperty("ev_" + evId);
+  props().deleteProperty("fail_" + evId);
+}
+// Retrouve un participant par son lien perso (token) ou son code secret (avec anti-devinette)
+function findParticipant(ev, req) {
+  let p;
+  if (req.token) p = ev.participants.find(x => x.token && x.token === req.token);
+  else {
+    if (tooManyFailures(ev.id, false)) throw new Error("Trop d'essais. Réessaie dans une heure.");
+    const code = clean(req.code, 12).replace(/\D/g, ""), h = hash(ev.id + ":" + code);
+    p = ev.participants.find(x => x.codeHash === h);
+    if (!p) { tooManyFailures(ev.id, true); throw new Error("Code secret incorrect."); }
+  }
+  if (!p) throw new Error("Ce lien n'est plus valable. Utilise ton code secret.");
+  return p;
+}
+
 function admin(req) {
   const ev = load(req.eventId);
   if (req.superKey) { checkSuper(req.superKey); return ev; }
@@ -237,10 +266,12 @@ const ACTIONS = {
       p.codeHash = hash(ev.id + ":" + code);
       p.token = rand(24);
       store(ev);
+      if (req.wish != null) setWish(ev.id, p.id, req.wish);
       mail(email, "Ton inscription au Secret Santa « " + ev.name + " »", "Bienvenue " + escHtml(p.name) + " !",
         "<p>Tu es bien inscrit·e au Secret Santa <strong>" + escHtml(ev.name) + "</strong>" +
         (ev.budget ? " (budget : " + escHtml(ev.budget) + ")" : "") + ".</p>" +
         "<p>Ton code secret : <strong style=\"font-size:22px;letter-spacing:4px\">" + code + "</strong></p>" +
+        "<p>Tu peux écrire ou modifier ta liste d'envies à tout moment sur la page du Secret Santa avec ce code.</p>" +
         "<p>Garde ce mail. Quand l'organisateur aura lancé le tirage, tu recevras un autre email. Tu pourras aussi découvrir ton tirage à tout moment sur le site avec ce code.</p>" +
         button(SITE + "#e=" + ev.id, "Voir le Secret Santa"));
       return { ok: true, again, name: p.name };
@@ -249,23 +280,22 @@ const ACTIONS = {
 
   reveal(req) {
     const ev = load(req.eventId);
-    let p;
-    if (req.token) p = ev.participants.find(x => x.token && x.token === req.token);
-    else {
-      // Le code secret seul suffit (il est unique dans ce Secret Santa)
-      if (tooManyFailures(ev.id, false)) throw new Error("Trop d'essais. Réessaie dans une heure.");
-      const code = clean(req.code, 12).replace(/\D/g, ""), h = hash(ev.id + ":" + code);
-      p = ev.participants.find(x => x.codeHash === h);
-      if (!p) { tooManyFailures(ev.id, true); throw new Error("Code secret incorrect."); }
-    }
-    if (!p) throw new Error("Ce lien n'est plus valable. Utilise ton code secret.");
-    if (ev.status !== "drawn") return { waiting: true, name: p.name, event: publicEvent(ev) };
+    // Le code secret seul suffit (il est unique dans ce Secret Santa)
+    const p = findParticipant(ev, req);
+    if (ev.status !== "drawn") return { waiting: true, name: p.name, event: publicEvent(ev), mw: getWish(ev.id, p.id) };
     const r = ev.participants.find(x => x.id === ev.assign[p.id]);
     if (!p.seen) {
       // Note que la personne a vu son tirage (pour que l'organisateur sache qui relancer)
       try { withLock(() => { const fresh = load(ev.id), me = fresh.participants.find(x => x.id === p.id); if (me && !me.seen) { me.seen = new Date().toISOString(); store(fresh); } }); } catch (e) {}
     }
-    return { g: p.name, r: r.name, b: ev.budget, d: ev.date, e: ev.name };
+    return { g: p.name, r: r.name, b: ev.budget, d: ev.date, e: ev.name, w: getWish(ev.id, r.id), mw: getWish(ev.id, p.id) };
+  },
+
+  // Chaque participant modifie sa liste d'envies (avec son lien perso ou son code)
+  updateWish(req) {
+    const ev = load(req.eventId);
+    const p = findParticipant(ev, req);
+    return { mw: setWish(ev.id, p.id, req.wish) };
   },
 
   adminGet(req) { return adminView(admin(req)); },
@@ -301,8 +331,7 @@ const ACTIONS = {
   adminDelete(req) {
     return withLock(() => {
       const ev = admin(req);
-      props().deleteProperty("ev_" + ev.id);
-      props().deleteProperty("fail_" + ev.id);
+      deleteEventData(ev.id);
       return { ok: true };
     });
   },
@@ -311,8 +340,7 @@ const ACTIONS = {
     checkSuper(req.superKey);
     return withLock(() => {
       load(req.eventId);
-      props().deleteProperty("ev_" + req.eventId);
-      props().deleteProperty("fail_" + req.eventId);
+      deleteEventData(req.eventId);
       return { ok: true };
     });
   },
@@ -331,6 +359,7 @@ const ACTIONS = {
       const p = { id: rand(8), name, email: "", codeHash: hash(ev.id + ":" + code), token: rand(24), byOrg: true };
       ev.participants.push(p);
       store(ev);
+      if (req.wish) setWish(ev.id, p.id, req.wish);
       mail(ev.orgEmail, "Tu as inscrit " + name + " au Secret Santa « " + ev.name + " »", "Inscription de " + escHtml(name),
         "<p>Tu as bien inscrit <strong>" + escHtml(name) + "</strong> au Secret Santa <strong>" + escHtml(ev.name) + "</strong>.</p>" +
         "<p>Voici son code secret, qui lui servira à découvrir son tirage : <strong style=\"font-size:22px;letter-spacing:4px\">" + code + "</strong></p>" +
@@ -350,6 +379,7 @@ const ACTIONS = {
       if (req.removeId) {
         ev.participants = ev.participants.filter(p => p.id !== req.removeId);
         ev.exclusions = ev.exclusions.filter(x => x.indexOf(req.removeId) < 0);
+        props().deleteProperty(wishKey(ev.id, req.removeId));
       }
       ["name", "budget", "date"].forEach(k => { if (req[k] != null) ev[k] = clean(req[k], k === "name" ? 80 : 30); });
       if (req.date != null) ev.reminded = false;
@@ -373,7 +403,7 @@ const ACTIONS = {
         if (!p.email) return;
         try {
           mail(p.email, "🎁 Ton tirage du Secret Santa « " + ev.name + " »", "Le tirage est fait, " + escHtml(p.name) + " !",
-            "<p>Clique sur le bouton pour découvrir à qui tu offres un cadeau. Vérifie que personne ne regarde ton écran 🤫</p>" +
+            "<p>Clique sur le bouton pour découvrir à qui tu offres un cadeau, avec sa liste d'envies et des idées cadeaux. Vérifie que personne ne regarde ton écran 🤫</p>" +
             button(SITE + "#e=" + ev.id + "&t=" + p.token, "Découvrir mon tirage") +
             "<p style=\"color:#7a6f69;font-size:13px\">Tu peux aussi aller sur " + SITE + "#e=" + ev.id + " et entrer le code secret reçu à l'inscription.</p>");
           sent++;
