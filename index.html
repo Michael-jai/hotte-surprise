@@ -57,6 +57,16 @@ button.big:not(:disabled){animation:pulse 2s ease-in-out infinite}
 button:disabled{opacity:.5;cursor:not-allowed}
 ul.list{list-style:none;margin:12px 0 0;padding:0}
 ul.list li{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px dashed var(--line)}
+.row.wrap{flex-wrap:wrap}
+.row.wrap #name{flex:1 1 140px} .row.wrap #phone{flex:1 1 170px}
+.pname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.ptel{flex:0 1 170px;padding:6px 10px;font-size:.9rem;border-width:1px}
+li.send{flex-direction:column;align-items:stretch!important}
+.actions{display:flex;gap:6px;flex-wrap:wrap}
+.actions>*{padding:8px 11px;font-size:.92rem}
+.btn{display:inline-flex;align-items:center;gap:4px;text-decoration:none;font-weight:600;border-radius:12px;padding:8px 14px;color:#fff;transition:transform .15s}
+.btn:hover{transform:translateY(-1px)}
+.btn.sms{background:#1e88e5} .btn.wa{background:#25a244}
 ul.list li.new{animation:pop .35s both}
 ul.list li:first-child{border-top:0}
 .x{background:none;color:var(--muted);padding:4px 8px}
@@ -200,8 +210,20 @@ function snow(){
 snow();
 
 // ---------- Mode organisateur ----------
-const state = { event:"", budget:"", date:"", names:[], exclusions:[], links:null, error:"" };
+const state = { event:"", budget:"", date:"", names:[], phones:{}, exclusions:[], links:null, error:"" };
 try { Object.assign(state, JSON.parse(localStorage.getItem("hotte") || "{}"), {error:""}); } catch(e){}
+state.phones = state.phones || {};
+// Numéro au format international sans "+" (06 12… → 33612…), pour WhatsApp
+function intl(phone){
+  let d = String(phone||"").replace(/[^\d+]/g,"");
+  if (d.startsWith("+")) return d.slice(1);
+  if (d.startsWith("00")) return d.slice(2);
+  if (d.startsWith("0") && d.length === 10) return "33" + d.slice(1);
+  return d;
+}
+function message(name, url){
+  return `🎅 Salut ${name} ! Voici ton lien pour le Secret Santa${state.event ? " « " + state.event + " »" : ""} : ${url}\nOuvre-le quand personne ne regarde ton écran 🤫`;
+}
 const save = () => { try { localStorage.setItem("hotte", JSON.stringify(state)); } catch(e){} };
 
 let justAdded = false;
@@ -227,8 +249,8 @@ function renderOrganizer(){
 
     <div class="card">
       <h2>2. Les participants (${state.names.length})</h2>
-      <form class="row" id="addForm"><input id="name" placeholder="Prénom" autocomplete="off"><button class="primary">Ajouter</button></form>
-      <ul class="list">${state.names.map((n,i)=>`<li class="${i===state.names.length-1&&justAdded?"new":""}">${esc(n)}<button class="x" data-del="${i}" aria-label="Retirer">✕</button></li>`).join("")}</ul>
+      <form class="row wrap" id="addForm"><input id="name" placeholder="Prénom" autocomplete="off"><input id="phone" type="tel" inputmode="tel" placeholder="Tél. (facultatif)" autocomplete="off"><button class="primary">Ajouter</button></form>
+      <ul class="list">${state.names.map((n,i)=>`<li class="${i===state.names.length-1&&justAdded?"new":""}"><span class="pname">${esc(n)}</span><input class="ptel" type="tel" inputmode="tel" placeholder="Téléphone" data-tel="${esc(n)}" value="${esc(state.phones[n]||"")}" aria-label="Téléphone de ${esc(n)}"><button class="x" data-del="${i}" aria-label="Retirer">✕</button></li>`).join("")}</ul>
     </div>
 
     <div class="card">
@@ -245,10 +267,14 @@ function renderOrganizer(){
     ${state.links ? `
     <div class="card" style="margin-top:16px">
       <h2>🎉 4. Envoie à chacun son lien</h2>
-      <p class="muted" style="margin-top:0">Chaque lien ne révèle que la personne tirée par son destinataire. N'ouvre pas ceux des autres !</p>
-      <ul class="list">${state.links.map(l=>`
-        <li><strong style="flex:0 0 auto">${esc(l.name)}</strong>
-          <div class="link"><code>${esc(l.url)}</code><button data-copy="${esc(l.url)}">Copier</button></div></li>`).join("")}</ul>
+      <p class="muted" style="margin-top:0">Chaque lien ne révèle que la personne tirée par son destinataire. Touche SMS ou WhatsApp : le message est déjà écrit, il ne reste qu'à appuyer sur Envoyer. N'ouvre pas les liens des autres !</p>
+      <ul class="list">${state.links.map(l=>{ const tel = state.phones[l.name]||"", msg = encodeURIComponent(message(l.name, l.url)); return `
+        <li class="send"><div><strong>${esc(l.name)}</strong> <span class="muted">${tel?esc(tel):"pas de numéro"}</span></div>
+          <div class="actions">
+            <a class="btn sms" href="sms:${esc(tel.replace(/[^\d+]/g,""))}?&body=${msg}">💬 SMS</a>
+            <a class="btn wa" target="_blank" rel="noopener" href="https://wa.me/${esc(intl(tel))}?text=${msg}">🟢 WhatsApp</a>
+            <button data-copy="${esc(l.url)}">🔗 Copier</button>
+          </div></li>`}).join("")}</ul>
     </div>` : ""}
   `;
 
@@ -257,16 +283,21 @@ function renderOrganizer(){
 
   document.getElementById("addForm").onsubmit = e => {
     e.preventDefault();
-    const v = document.getElementById("name").value.trim();
+    const v = document.getElementById("name").value.trim(), tel = document.getElementById("phone").value.trim();
     if (!v) return;
     if (state.names.some(n => n.toLowerCase() === v.toLowerCase())) { state.error = `« ${v} » est déjà dans la liste.`; }
-    else { state.names.push(v); state.error=""; state.links=null; }
+    else { state.names.push(v); if (tel) state.phones[v] = tel; state.error=""; state.links=null; }
     justAdded = true; save(); renderOrganizer(); justAdded = false; document.getElementById("name").focus();
   };
   app.querySelectorAll("[data-del]").forEach(b => b.onclick = () => {
     const n = state.names.splice(+b.dataset.del,1)[0];
     state.exclusions = state.exclusions.filter(p => !p.includes(n));
+    delete state.phones[n];
     state.links=null; save(); renderOrganizer();
+  });
+  app.querySelectorAll("[data-tel]").forEach(inp => {
+    inp.oninput = () => { state.phones[inp.dataset.tel] = inp.value.trim(); save(); };
+    inp.onchange = () => { if (state.links) renderOrganizer(); };
   });
   app.querySelectorAll("[data-delex]").forEach(b => b.onclick = () => { state.exclusions.splice(+b.dataset.delex,1); state.links=null; save(); renderOrganizer(); });
   document.getElementById("addEx").onclick = () => {
