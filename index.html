@@ -78,7 +78,6 @@ details{margin-top:12px;text-align:left} summary{cursor:pointer}
 .card a:not(.btn){color:var(--red);font-weight:600}
 .spinner{width:36px;height:36px;margin:10px auto;border:4px solid var(--line);border-top-color:var(--red);border-radius:50%;animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-#msg.err{position:sticky;bottom:12px}
 ul.list li.new{animation:pop .35s both}
 ul.list li:first-child{border-top:0}
 .x{background:none;color:var(--muted);padding:4px 8px}
@@ -306,7 +305,9 @@ async function renderAdmin(id, token, data){
     <div class="card">
       <h2>2. Inscrits (${data.participants.length}) <button class="x" id="refresh" title="Actualiser">🔄 Actualiser</button></h2>
       ${data.participants.length ? "" : `<p class="muted">Personne pour l'instant. Les inscriptions apparaîtront ici.</p>`}
-      <ul class="list">${data.participants.map(p => `<li><span class="pname">${esc(p.name)} <span class="muted">${esc(p.email)}</span></span>${open ? `<button class="x" data-del="${esc(p.id)}" aria-label="Retirer ${esc(p.name)}">✕</button>` : `<button class="x" data-resend="${esc(p.id)}">Renvoyer l'email</button>`}</li>`).join("")}</ul>
+      ${open ? `<form class="row" id="addName" style="margin-top:6px"><input id="addNameInput" placeholder="Inscrire quelqu'un sans email (prénom)" autocomplete="off"><button>Inscrire</button></form>
+      <p class="muted" style="margin:6px 0 0">Tu recevras son code secret par email, à lui transmettre.</p>` : ""}
+      <ul class="list">${data.participants.map(p => `<li><span class="pname">${esc(p.name)} <span class="muted">${p.email ? esc(p.email) : "sans email"}</span></span>${open ? `<button class="x" data-del="${esc(p.id)}" aria-label="Retirer ${esc(p.name)}">✕</button>` : (p.email ? `<button class="x" data-resend="${esc(p.id)}">Renvoyer l'email</button>` : `<span class="muted">prénom + code</span>`)}</li>`).join("")}</ul>
     </div>
 
     ${open ? `
@@ -324,12 +325,19 @@ async function renderAdmin(id, token, data){
       <h2>🎉 Le tirage est fait</h2>
       ${data.verified ? `<p class="ok">✓ Tirage vérifié</p>
       <ul class="checks"><li>Chaque participant offre à une seule personne</li><li>Personne n'est tiré deux fois</li><li>Personne ne s'est tiré soi-même</li><li>Toutes les exclusions sont respectées</li></ul>` : `<p class="err">La vérification du tirage a échoué. Contacte le support.</p>`}
+      ${data.noEmail && data.noEmail.length ? `<p>Sans email : <strong>${esc(data.noEmail.join(", "))}</strong>. Ils découvrent leur tirage sur la page du Secret Santa avec leur prénom et leur code.</p>` : ""}
       <p>Chacun a reçu son tirage par email${data.sent != null ? ` (${data.sent} email${data.sent>1?"s":""} envoyé${data.sent>1?"s":""})` : ""}. Toi non plus, tu ne peux pas voir les résultats.</p>
       ${data.failed && data.failed.length ? `<p class="err">Échec d'envoi pour : ${esc(data.failed.join(", "))}. Utilise « Renvoyer l'email ».</p>` : ""}
     </div>`}
     <p id="msg" class="hidden"></p>`;
   bindCopy(app());
   const call = (btn, action, extra) => busy(btn, async () => renderAdmin(id, token, await api(action, Object.assign({ eventId:id, adminToken:token }, extra))));
+  const addName = document.getElementById("addName");
+  if (addName) addName.onsubmit = e => {
+    e.preventDefault();
+    const name = document.getElementById("addNameInput").value.trim();
+    if (name) call(addName.querySelector("button"), "adminAdd", { name });
+  };
   document.getElementById("refresh").onclick = e => call(e.currentTarget, "adminGet");
   app().querySelectorAll("[data-del]").forEach(b => b.onclick = () => call(b, "adminUpdate", { removeId: b.dataset.del }));
   app().querySelectorAll("[data-resend]").forEach(b => b.onclick = () => busy(b, async () => { await api("adminResend", { eventId:id, adminToken:token, participantId: b.dataset.resend }); b.textContent = "Envoyé ✓"; }));
@@ -385,9 +393,9 @@ async function renderEvent(id, token){
     </div>` : ""}
     <div class="card">
       <h2>🎁 Découvrir mon tirage</h2>
-      <p class="muted" style="margin-top:0">${open ? "Le tirage n'a pas encore eu lieu. Tu recevras un email dès qu'il sera fait." : "Clique sur le lien reçu par email, ou entre ton email et ton code secret."}</p>
+      <p class="muted" style="margin-top:0">${open ? "Le tirage n'a pas encore eu lieu. Tu recevras un email dès qu'il sera fait." : "Clique sur le lien reçu par email, ou entre ton email (ou ton prénom) et ton code secret."}</p>
       <form id="find">
-        <div class="row wrap"><input id="femail" type="email" placeholder="Ton email" required autocomplete="email"><input id="fcode" inputmode="numeric" placeholder="Code secret" required autocomplete="off" style="flex:0 1 140px"></div>
+        <div class="row wrap"><input id="femail" placeholder="Ton email ou ton prénom" required autocomplete="email"><input id="fcode" inputmode="numeric" placeholder="Code secret" required autocomplete="off" style="flex:0 1 140px"></div>
         <button class="primary" style="margin-top:10px">Voir mon tirage</button>
       </form>
     </div>
