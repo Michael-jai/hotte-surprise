@@ -384,6 +384,13 @@ const ACTIONS = {
     return { ok: true };
   }
 };
+// À lancer depuis l'éditeur pour accorder toutes les autorisations (emails, service externe, déclencheurs)
+function autoriser() {
+  UrlFetchApp.fetch("https://oauth2.googleapis.com/tokeninfo?id_token=test", { muteHttpExceptions: true });
+  ScriptApp.getProjectTriggers();
+  MailApp.getRemainingDailyQuota();
+  Logger.log("Autorisations OK");
+}
 // ===== RAPPELS (déclencheur quotidien) =====
 // À lancer une seule fois depuis l'éditeur : crée le déclencheur qui exécute sendReminders chaque matin.
 function installReminders() {
