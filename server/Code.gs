@@ -296,7 +296,9 @@ const ACTIONS = {
         "<p>Tu peux écrire ou modifier ta liste d'envies à tout moment sur la page du Secret Santa avec ce code.</p>" +
         "<p>Garde ce mail. Quand l'organisateur aura lancé le tirage, tu recevras un autre email. Tu pourras aussi découvrir ton tirage à tout moment sur le site avec ce code.</p>" +
         button(SITE + "#e=" + ev.id, "Voir le Secret Santa"));
-      return { ok: true, again, name: p.name };
+      // Nouvelle inscription : le navigateur reçoit le lien perso pour voir/modifier sa liste d'envies tout de suite.
+      // (Pas pour une réinscription avec un email existant, pour ne pas donner l'accès à quelqu'un d'autre.)
+      return { ok: true, again, name: p.name, token: again ? undefined : p.token, mw: again ? undefined : getWish(ev.id, p.id) };
     });
   },
 

@@ -119,6 +119,12 @@ textarea:focus{outline:none;border-color:var(--green)}
 .card a.wlink{display:inline-block;padding:4px 10px;border-radius:99px;background:#ff9900;color:#111;font-weight:700;font-size:.85rem;text-decoration:none}
 .wish-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:10px}
 .wishbox h2{font-size:1.1rem}
+.wlines{display:flex;flex-direction:column;gap:6px;margin-top:4px}
+.wline{display:flex;align-items:center;gap:8px}
+.wthumb{flex:0 0 40px;height:40px;border-radius:10px;background:var(--soft);display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:1.1rem}
+.wthumb img{max-width:100%;max-height:100%;object-fit:contain;background:#fff}
+.wline .winput{flex:1;min-width:0;padding:9px 12px}
+.wdel{flex:0 0 auto;border:0;background:none;color:var(--muted);font-size:1.1rem;padding:6px;cursor:pointer;box-shadow:none}
 .ideas{margin:10px 0 4px;text-align:left}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .card a.chip{display:inline-block;padding:6px 12px;border-radius:99px;background:#232f3e;color:#fff;font-weight:600;font-size:.88rem;text-decoration:none;border-bottom:3px solid #ff9900}
@@ -206,24 +212,67 @@ function wishHtml(w){
       <div class="wbody">${i.label ? `<span>${esc(i.label)}</span>` : ""}${links.map(u => `<a class="wlink" target="_blank" rel="noopener nofollow" href="${esc(u)}">${esc(linkLabel(u))}</a>`).join("")}</div></li>`;
   }).join("")}</ul>`;
 }
+// Éditeur ligne par ligne : une envie par ligne, une ligne vide apparaît dès qu'on remplit la dernière
+const MAX_WISH_LINES = 15;
+function wishEditor(id, text){
+  const lines = String(text || "").split(/\n+/).map(x => x.trim()).filter(Boolean);
+  return `<div class="wlines" id="${id}">${lines.concat([""]).map(wishLine).join("")}</div>
+    <p class="muted" style="margin:6px 0 0;font-size:.82rem">Écris une idée, ou colle un <strong>lien Amazon</strong> (la photo s'affiche). Autre site : ajoute aussi le lien d'une image.</p>`;
+}
+function wishLine(v){
+  return `<div class="wline"><span class="wthumb"></span><input class="winput" value="${esc(v)}" maxlength="300" placeholder="Ex. : casque audio, ou colle un lien Amazon" autocomplete="off"><button type="button" class="wdel" aria-label="Retirer cette envie">✕</button></div>`;
+}
+function bindWishEditor(id){
+  const box = document.getElementById(id);
+  if (!box) return () => "";
+  const refresh = () => {
+    const rows = [...box.querySelectorAll(".wline")];
+    rows.forEach((r, i) => {
+      const v = r.querySelector(".winput").value.trim(), url = (v.match(/https?:\/\/[^\s<>"']+/) || [])[0], img = url ? linkImage(shortUrl(url)) : "";
+      const th = r.querySelector(".wthumb");
+      if (th.dataset.src !== img) { th.dataset.src = img; th.innerHTML = img ? `<img src="${esc(img)}" alt="" referrerpolicy="no-referrer" onload="if(this.naturalWidth<5)this.remove()" onerror="this.remove()">` : (v ? "🎁" : ""); }
+      if (!img) th.textContent = v ? "🎁" : "";
+      r.querySelector(".wdel").style.visibility = v ? "visible" : "hidden";
+    });
+    // toujours exactement une ligne vide à la fin
+    const empties = rows.filter(r => !r.querySelector(".winput").value.trim());
+    const last = rows[rows.length - 1];
+    if (last.querySelector(".winput").value.trim() && rows.length < MAX_WISH_LINES) box.insertAdjacentHTML("beforeend", wishLine(""));
+    empties.slice(0, -1).forEach(r => { if (r !== last && document.activeElement !== r.querySelector(".winput")) r.remove(); });
+  };
+  box.addEventListener("input", refresh);
+  box.addEventListener("focusout", () => setTimeout(refresh, 0));
+  box.addEventListener("click", e => {
+    const d = e.target.closest(".wdel"); if (!d) return;
+    d.closest(".wline").remove(); if (!box.querySelector(".wline")) box.insertAdjacentHTML("beforeend", wishLine("")); refresh();
+  });
+  box.addEventListener("keydown", e => {
+    if (e.key !== "Enter" || !e.target.classList.contains("winput")) return;
+    e.preventDefault(); const next = e.target.closest(".wline").nextElementSibling; if (next) next.querySelector(".winput").focus();
+  });
+  refresh();
+  return () => cleanWish([...box.querySelectorAll(".winput")].map(i => i.value.trim()).filter(Boolean).join("\n"));
+}
 function wishCard(mw){
   return `<div class="card">
     <h2>✏️ Ma liste d'envies</h2>
-    <p class="muted" style="margin-top:0">Une envie par ligne. Colle un <strong>lien Amazon</strong> après le nom : la photo du produit s'affichera. Pour un autre site, ajoute aussi le lien d'une image (clic droit sur la photo → « Copier l'adresse de l'image »). Visible uniquement par la personne qui t'a tiré au sort.</p>
-    <textarea id="wishText" maxlength="${MAX_WISH}" rows="5" placeholder="Casque audio https://www.amazon.fr/dp/…&#10;Livre de cuisine italienne&#10;Pas de chocolat 🙏">${esc(mw || "")}</textarea>
-    <div class="wish-foot"><span class="muted" id="wishCount"></span><button class="primary" id="wishSave">Enregistrer</button></div>
+    <p class="muted" style="margin-top:0">Visible uniquement par la personne qui t'a tiré au sort.</p>
+    ${wishEditor("wishEdit", mw)}
+    <div class="wish-foot"><span></span><button class="primary" id="wishSave">Enregistrer</button></div>
     <p id="wishMsg" class="ok hidden"></p>
   </div>`;
 }
-function bindWish(auth){
-  const t = document.getElementById("wishText"), c = document.getElementById("wishCount");
-  if (!t) return;
-  const count = () => c.textContent = `${t.value.length}/${MAX_WISH}`; count(); t.oninput = count;
+function bindWish(auth, onSaved){
+  if (!document.getElementById("wishEdit")) return;
+  let get = bindWishEditor("wishEdit");
   const btn = document.getElementById("wishSave");
   btn.onclick = () => busy(btn, async () => {
     const m = document.getElementById("wishMsg"); m.classList.add("hidden");
-    const r = await api("updateWish", Object.assign({ wish: cleanWish(t.value) }, auth));
-    t.value = r.mw; count(); m.textContent = r.mw ? "✓ Liste d'envies enregistrée" : "✓ Liste d'envies effacée"; m.classList.remove("hidden");
+    const r = await api("updateWish", Object.assign({ wish: get() }, auth));
+    const box = document.getElementById("wishEdit"); box.outerHTML = wishEditor("wishEdit", r.mw).replace(/<p class="muted"[\s\S]*$/, "");
+    get = bindWishEditor("wishEdit");
+    m.textContent = r.mw ? "✓ Liste d'envies enregistrée" : "✓ Liste d'envies effacée"; m.classList.remove("hidden");
+    if (onSaved) onSaved(r.mw);
   });
 }
 
@@ -603,8 +652,7 @@ async function renderEvent(id, token){
         <label>Ton prénom</label><input id="jname" required autocomplete="given-name">
         <label>Ton email</label><input id="jemail" type="email" required autocomplete="email">
         <label>Ma liste d'envies <span class="muted" style="font-weight:400">(facultatif, modifiable plus tard)</span></label>
-        <textarea id="jwish" maxlength="${MAX_WISH}" rows="4" placeholder="Une envie par ligne, avec un lien Amazon si tu veux :&#10;Casque audio https://www.amazon.fr/dp/…&#10;Livre de cuisine italienne"></textarea>
-        <p class="muted" style="margin:4px 0 0;font-size:.85rem">Colle des liens Amazon ou d'autres sites. Seule la personne qui te tirera au sort la verra.</p>
+        ${wishEditor("jwish", "")}
         <button class="primary big" style="margin-top:16px">Je participe</button>
       </form>
       <div id="joined" class="hidden"></div>
@@ -619,14 +667,26 @@ async function renderEvent(id, token){
     </div>
     <p id="msg" class="hidden"></p>`;
   const join = document.getElementById("join");
+  const getJoinWish = bindWishEditor("jwish");
   if (join) join.onsubmit = e => {
     e.preventDefault();
-    busy(join.querySelector("button"), async () => {
-      const r = await api("register", { eventId:id, name: document.getElementById("jname").value.trim(), email: document.getElementById("jemail").value.trim(), wish: cleanWish(document.getElementById("jwish").value) });
+    busy(join.querySelector("button.primary"), async () => {
+      const r = await api("register", { eventId:id, name: document.getElementById("jname").value.trim(), email: document.getElementById("jemail").value.trim(), wish: getJoinWish() });
       join.classList.add("hidden");
       const j = document.getElementById("joined");
-      j.innerHTML = `<p class="ok">✓ ${r.again ? "Te revoilà" : "C'est noté"}, ${esc(r.name)} !</p><p>Ton code secret vient de t'être envoyé par email${r.again ? " (c'est un nouveau code, l'ancien ne marche plus)" : ""}. Regarde aussi dans tes spams. Garde-le précieusement jusqu'au tirage.</p>`;
+      j.innerHTML = `<p class="ok">✓ ${r.again ? "Te revoilà" : "C'est noté"}, ${esc(r.name)} !</p><p>Ton code secret vient de t'être envoyé par email${r.again ? " (c'est un nouveau code, l'ancien ne marche plus)" : ""}. Regarde aussi dans tes spams. Garde-le précieusement jusqu'au tirage.</p>
+        ${r.token ? `<div class="wish" style="margin-top:12px"><p class="wish-title">🎁 Ta liste d'envies</p><div id="myWishView">${r.mw ? wishHtml(r.mw) : `<p class="muted" style="margin:0">Vide pour l'instant.</p>`}</div>
+          <button class="x" id="editMyWish" style="margin-top:8px">✏️ Modifier ma liste</button></div><div id="myWishEdit" class="wishbox hidden"></div>` : `<p class="muted">Pour modifier ta liste d'envies, entre ton nouveau code secret ci-dessous.</p>`}`;
       j.classList.remove("hidden");
+      if (r.token) {
+        const auth = { eventId:id, token: r.token };
+        document.getElementById("editMyWish").onclick = () => {
+          const ed = document.getElementById("myWishEdit");
+          ed.innerHTML = wishCard(r.mw).replace('<div class="card">', '<div>'); ed.classList.remove("hidden");
+          document.getElementById("editMyWish").parentNode.classList.add("hidden");
+          bindWish(auth, mw => { r.mw = mw; document.getElementById("myWishView").innerHTML = mw ? wishHtml(mw) : `<p class="muted" style="margin:0">Vide pour l'instant.</p>`; ed.classList.add("hidden"); document.getElementById("editMyWish").parentNode.classList.remove("hidden"); });
+        };
+      }
     });
   };
   document.getElementById("find").onsubmit = e => {
