@@ -448,13 +448,18 @@ const fail = (m) => { app().innerHTML = hero(true) + `<div class="card reveal"><
 
 // ---------- Connexion Google (organisateurs) ----------
 const GOOGLE_CLIENT_ID = "841116298846-u2p0did8cuubiabmauqtsfvsmaf2qfp7.apps.googleusercontent.com";
+// Session de 30 jours donnée par le serveur après la connexion Google (gardée dans ce navigateur)
 function googleSession(){
   try {
-    const g = JSON.parse(sessionStorage.getItem("hotte-google") || "null");
+    const g = JSON.parse(localStorage.getItem("hotte-google") || "null");
     return g && g.exp * 1000 > Date.now() + 60000 ? g : null;
   } catch(e){ return null; }
 }
-function googleLogout(){ try { sessionStorage.removeItem("hotte-google"); } catch(e){} if (window.google && google.accounts) google.accounts.id.disableAutoSelect(); }
+function googleLogout(){
+  const g = googleSession(); if (g) api("logout", { session: g.token }).catch(() => {});
+  try { localStorage.removeItem("hotte-google"); } catch(e){}
+  if (window.google && google.accounts) google.accounts.id.disableAutoSelect();
+}
 function loadGis(){
   if (window.google && google.accounts) return Promise.resolve();
   return new Promise((ok, ko) => {
@@ -467,12 +472,11 @@ function loadGis(){
 // Affiche le bouton Google dans `el` ; appelle `done` une fois connecté
 async function googleButton(el, done){
   try { await loadGis(); } catch(e){ el.innerHTML = `<p class="err">${esc(e.message)}</p>`; return; }
-  google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: r => {
+  google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: async r => {
     try {
-      const b = r.credential.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
-      const info = JSON.parse(decodeURIComponent(escape(atob(b))));
-      sessionStorage.setItem("hotte-google", JSON.stringify({ token: r.credential, email: info.email, exp: info.exp }));
-    } catch(e){}
+      const s = await api("login", { idToken: r.credential });
+      try { localStorage.setItem("hotte-google", JSON.stringify({ token: s.session, email: s.email, exp: s.exp })); } catch(e){}
+    } catch(e){ el.insertAdjacentHTML("afterend", `<p class="err">${esc(e.message)}</p>`); return; }
     done();
   }});
   google.accounts.id.renderButton(el, { theme: "filled_blue", size: "large", shape: "pill", text: "signin_with", locale: "fr" });
@@ -492,6 +496,11 @@ function renderHome(){
       <p class="sub">Chacun s'inscrit avec son email, tu lances le tirage, chacun reçoit le sien par email. Personne, pas même toi, ne voit qui offre à qui.</p>
     </div>
     <div id="mine"></div>
+    <div class="card">
+      <h2>📝 Modifier ma liste d'envies</h2>
+      <p class="muted" style="margin-top:0">Tu participes à un Secret Santa ? Entre le code secret reçu par email, pas besoin de compte.</p>
+      <form id="homeCode" class="row"><input id="hcode" inputmode="numeric" pattern="[0-9 ]*" placeholder="Ton code" required autocomplete="one-time-code" style="font-size:1.2rem;letter-spacing:.3em;text-align:center"><button class="primary">Ouvrir</button></form>
+    </div>
     <div class="card">
       <h2>🎄 Créer un Secret Santa</h2>
       <p class="muted" style="margin-top:0">Jusqu'à ${MAX_PEOPLE} participants par Secret Santa.</p>
@@ -521,6 +530,13 @@ function renderHome(){
     });
   };
   if (needLogin) googleButton(document.getElementById("gbtn"), renderHome);
+  document.getElementById("homeCode").onsubmit = e => {
+    e.preventDefault();
+    busy(e.target.querySelector("button"), async () => {
+      const code = document.getElementById("hcode").value.trim(), r = await api("findByCode", { code });
+      pendingCode = code; location.hash = "e=" + r.eventId;
+    });
+  };
   const lo = document.getElementById("logout");
   if (lo) lo.onclick = e => { e.preventDefault(); googleLogout(); renderHome(); };
   if (g) refreshMine(g);
@@ -653,10 +669,21 @@ async function renderAdmin(id, token, data){
 }
 
 // ---------- Page participant : inscription puis découverte du tirage ----------
+let pendingCode = "";  // code tapé sur l'accueil, utilisé une fois arrivé sur la page du Secret Santa
+// Lien perso de la personne inscrite depuis ce navigateur, pour retrouver sa liste d'envies sans code
+const myLinks = () => { try { return JSON.parse(localStorage.getItem("hotte-me") || "{}"); } catch(e){ return {}; } };
+function rememberMe(id, token){ try { const m = myLinks(); if (token) m[id] = token; else delete m[id]; localStorage.setItem("hotte-me", JSON.stringify(m)); } catch(e){} }
 async function renderEvent(id, token){
   setTimeout(() => document.body.classList.add("ready"), 600);
   loading();
-  if (token) {
+  if (token) rememberMe(id, token);
+  const saved = !token && myLinks()[id];
+  if (saved) {
+    // Avant le tirage on rouvre directement sa liste ; après, on attend qu'il clique (le tirage s'affiche alors comme vu)
+    try { const r = await api("reveal", { eventId:id, token: saved, peek: true }); if (r.waiting) { token = saved; var waitingWish = r; } else var savedDrawn = true; }
+    catch(e){ rememberMe(id, null); }
+  }
+  if (token && !waitingWish) {
     try {
       const r = await api("reveal", { eventId:id, token });
       if (!r.waiting) return renderReveal(r, { eventId:id, token });
@@ -688,8 +715,8 @@ async function renderEvent(id, token){
       <div id="joined" class="hidden"></div>
     </div>` : ""}
     <div class="card">
-      <h2>🎁 Découvrir mon tirage</h2>
-      <p class="muted" style="margin-top:0">${open ? "Le tirage n'a pas encore eu lieu. Tu recevras un email dès qu'il sera fait." : "Clique sur le lien reçu par email, ou entre simplement ton code secret."}</p>
+      <h2>${open ? "📝 Déjà inscrit ? Ma liste d'envies" : "🎁 Découvrir mon tirage"}</h2>
+      <p class="muted" style="margin-top:0">${open ? "Entre ton code secret (reçu par email) pour écrire ou modifier ta liste d'envies. Le tirage n'a pas encore eu lieu : tu recevras un email dès qu'il sera fait." : "Clique sur le lien reçu par email, ou entre simplement ton code secret. Tu pourras aussi y modifier ta liste d'envies."}</p>
       <div id="waitWish"></div>
       <form id="find">
         <div class="row"><input id="fcode" inputmode="numeric" pattern="[0-9 ]*" placeholder="Ton code secret" required autocomplete="one-time-code" style="font-size:1.3rem;letter-spacing:.3em;text-align:center"><button class="primary">Voir</button></div>
@@ -708,6 +735,7 @@ async function renderEvent(id, token){
         ${r.token ? `<div class="wish" style="margin-top:12px"><p class="wish-title">🎁 Ta liste d'envies</p><div id="myWishView">${r.mw ? wishHtml(r.mw) : `<p class="muted" style="margin:0">Vide pour l'instant.</p>`}</div>
           <button class="x" id="editMyWish" style="margin-top:8px">✏️ Modifier ma liste</button></div><div id="myWishEdit" class="wishbox hidden"></div>` : `<p class="muted">Pour modifier ta liste d'envies, entre ton nouveau code secret ci-dessous.</p>`}`;
       j.classList.remove("hidden");
+      if (r.token) rememberMe(id, r.token);
       if (r.token) {
         const auth = { eventId:id, token: r.token };
         document.getElementById("editMyWish").onclick = () => {
@@ -729,6 +757,12 @@ async function renderEvent(id, token){
     });
   };
   if (waitingWish) showWaitWish(waitingWish, { eventId:id, token });
+  if (pendingCode && !waitingWish) { document.getElementById("fcode").value = pendingCode; document.getElementById("find").requestSubmit(); }
+  pendingCode = "";
+  if (savedDrawn && !document.getElementById("find").classList.contains("hidden")) {
+    document.getElementById("waitWish").innerHTML = `<button class="primary big" id="seeMine">🎁 Voir mon tirage et ma liste</button><p class="muted" style="text-align:center">ou entre un code secret :</p>`;
+    document.getElementById("seeMine").onclick = e => busy(e.currentTarget, async () => renderReveal(await api("reveal", { eventId:id, token: saved }), { eventId:id, token: saved }));
+  }
 }
 // Avant le tirage : la personne identifiée peut écrire ou modifier sa liste d'envies
 function showWaitWish(r, auth){

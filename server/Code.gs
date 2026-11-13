@@ -7,6 +7,7 @@ const CODE_DIGITS = 6;          // longueur du code secret envoyé à chaque par
 const MAX_PARTICIPANTS = 40;     // limite liée à la taille de stockage (9 Ko par Secret Santa)
 const MAX_EVENTS_PER_DAY = 10;   // anti-abus : créations de Secret Santa par jour et par compte Google
 const MAX_EVENTS_PER_DAY_SITE = 100; // anti-abus : créations par jour sur tout le site
+const MAX_FIND_FAILURES = 60;    // anti-devinette : codes faux tolérés par heure sur la page d'accueil (tout le site)
 const MAX_CODE_FAILURES = 10;    // anti-devinette : codes faux tolérés par heure et par Secret Santa
 // Connexion Google pour les organisateurs : ID client OAuth (public). Vide = création libre sans connexion.
 const GOOGLE_CLIENT_ID = "841116298846-u2p0did8cuubiabmauqtsfvsmaf2qfp7.apps.googleusercontent.com";
@@ -69,9 +70,17 @@ function publicEvent(ev) {
   return { id: ev.id, name: ev.name, budget: ev.budget, date: ev.date, status: ev.status, count: ev.participants.length };
 }
 // Vérifie un jeton de connexion Google et renvoie l'email du compte
+// Session du site (30 jours) créée après une connexion Google, pour ne pas devoir se reconnecter à chaque visite
+const SESSION_DAYS = 30;
+const sessKey = t => "sess_" + hash("session:" + t).slice(0, 32);
 function googleEmail(idToken) {
   if (!GOOGLE_CLIENT_ID) throw new Error("La connexion Google n'est pas configurée.");
   if (!idToken) throw new Error("Connecte-toi avec Google.");
+  if (String(idToken).indexOf("s.") === 0) {
+    const sess = JSON.parse(props().getProperty(sessKey(idToken)) || "null");
+    if (!sess || sess.x < Date.now()) throw new Error("Connexion Google expirée. Reconnecte-toi.");
+    return sess.e;
+  }
   const res = UrlFetchApp.fetch("https://oauth2.googleapis.com/tokeninfo?id_token=" + encodeURIComponent(idToken), { muteHttpExceptions: true });
   if (res.getResponseCode() !== 200) throw new Error("Connexion Google expirée. Reconnecte-toi.");
   const t = JSON.parse(res.getContentText());
@@ -300,9 +309,9 @@ const ACTIONS = {
         "<p>Tu es bien inscrit·e au Secret Santa <strong>" + escHtml(ev.name) + "</strong>" +
         (ev.budget ? " (budget : " + escHtml(ev.budget) + ")" : "") + ".</p>" +
         "<p>Ton code secret : <strong style=\"font-size:22px;letter-spacing:4px\">" + code + "</strong></p>" +
-        "<p>Tu peux écrire ou modifier ta liste d'envies à tout moment sur la page du Secret Santa avec ce code.</p>" +
-        "<p>Garde ce mail. Quand l'organisateur aura lancé le tirage, tu recevras un autre email. Tu pourras aussi découvrir ton tirage à tout moment sur le site avec ce code.</p>" +
-        button(SITE + "#e=" + ev.id, "Voir le Secret Santa"));
+        "<p>Écris ou modifie ta liste d'envies à tout moment avec ce bouton (ou sur la page du Secret Santa avec ton code) :</p>" +
+        button(SITE + "#e=" + ev.id + "&t=" + p.token, "🎁 Ma liste d'envies") +
+        "<p>Garde ce mail. Quand l'organisateur aura lancé le tirage, tu recevras un autre email. Tu pourras aussi découvrir ton tirage à tout moment sur le site avec ce code.</p>");
       // Nouvelle inscription : le navigateur reçoit le lien perso pour voir/modifier sa liste d'envies tout de suite.
       // (Pas pour une réinscription avec un email existant, pour ne pas donner l'accès à quelqu'un d'autre.)
       return { ok: true, again, name: p.name, token: again ? undefined : p.token, mw: again ? undefined : getWish(ev.id, p.id) };
@@ -314,12 +323,40 @@ const ACTIONS = {
     // Le code secret seul suffit (il est unique dans ce Secret Santa)
     const p = findParticipant(ev, req);
     if (ev.status !== "drawn") return { waiting: true, name: p.name, event: publicEvent(ev), mw: getWish(ev.id, p.id) };
+    if (req.peek) return { drawn: true };  // simple vérification du lien, sans afficher ni marquer le tirage comme vu
     const r = ev.participants.find(x => x.id === ev.assign[p.id]);
     if (!p.seen) {
       // Note que la personne a vu son tirage (pour que l'organisateur sache qui relancer)
       try { withLock(() => { const fresh = load(ev.id), me = fresh.participants.find(x => x.id === p.id); if (me && !me.seen) { me.seen = new Date().toISOString(); store(fresh); } }); } catch (e) {}
     }
     return { g: p.name, r: r.name, b: ev.budget, d: ev.date, e: ev.name, w: getWish(ev.id, r.id), mw: getWish(ev.id, p.id) };
+  },
+
+  // Page d'accueil : retrouver son Secret Santa avec son seul code secret (pour modifier sa liste d'envies)
+  findByCode(req) {
+    const now = Date.now(), key = "gfail";
+    let fails = []; try { fails = JSON.parse(props().getProperty(key) || "[]"); } catch (e) {}
+    fails = fails.filter(t => now - t < 60 * 60 * 1000);
+    if (fails.length >= MAX_FIND_FAILURES) throw new Error("Trop d'essais. Utilise plutôt le lien reçu par email, ou réessaie dans une heure.");
+    const code = clean(req.code, 12).replace(/\D/g, "");
+    if (code.length === CODE_DIGITS) {
+      const ev = allEvents().find(e => e.participants.some(x => x.codeHash === hash(e.id + ":" + code)));
+      if (ev) return { eventId: ev.id };
+    }
+    fails.push(now); props().setProperty(key, JSON.stringify(fails));
+    throw new Error("Code secret introuvable. Vérifie-le dans l'email reçu à l'inscription.");
+  },
+
+  // Connexion : vérifie le jeton Google une fois et donne une session de 30 jours
+  login(req) {
+    if (String(req.idToken || "").indexOf("s.") === 0) throw new Error("Connexion Google invalide. Reconnecte-toi.");
+    const email = googleEmail(req.idToken), token = "s." + rand(40), exp = Date.now() + SESSION_DAYS * 86400000;
+    props().setProperty(sessKey(token), JSON.stringify({ e: email, x: exp }));
+    return { session: token, email, exp: Math.floor(exp / 1000) };
+  },
+  logout(req) {
+    if (String(req.session || "").indexOf("s.") === 0) props().deleteProperty(sessKey(req.session));
+    return { ok: true };
   },
 
   // Aperçu dans l'éditeur : déplie les liens courts Amazon (amzn.eu/…) pour afficher la photo avant l'enregistrement
@@ -515,7 +552,10 @@ function daysUntil(date) {
 function sendReminders() {
   // Ménage : les compteurs de créations des jours passés ne servent plus
   const today = new Date().toISOString().slice(0, 10), all = props().getProperties();
-  Object.keys(all).forEach(k => { if (/^dayu?_/.test(k) && k.indexOf(today) < 0) props().deleteProperty(k); });
+  Object.keys(all).forEach(k => {
+    if (/^dayu?_/.test(k) && k.indexOf(today) < 0) props().deleteProperty(k);
+    if (k.indexOf("sess_") === 0) { try { if (JSON.parse(all[k]).x < Date.now()) props().deleteProperty(k); } catch (e) { props().deleteProperty(k); } }
+  });
   allEvents().forEach(ev => {
     if (!ev.date || ev.reminded || !/^\d{4}-\d{2}-\d{2}$/.test(ev.date)) return;
     const d = daysUntil(ev.date);
