@@ -186,8 +186,20 @@ new MutationObserver(() => { if (document.querySelector(".countdown:empty")) tic
 const MAX_WISH = 1500;
 // Liens : on raccourcit les liens Amazon (https://www.amazon.fr/dp/ASIN) pour tenir dans la liste
 function shortUrl(u){
-  const m = u.match(/^https?:\/\/(?:www\.)?amazon\.([a-z.]+)\/(?:[^?#]*\/)?(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})/i);
-  return m ? `https://www.amazon.${m[1]}/dp/${m[2].toUpperCase()}` : u;
+  const m = u.match(/^https?:\/\/(?:www\.)?amazon\.([a-z.]+)\/(?:[^?#]*\/)?(?:dp|gp\/product|gp\/aw\/d|exec\/obidos\/ASIN|o\/ASIN)\/([A-Z0-9]{10})/i)
+    || u.match(/^https?:\/\/(?:www\.)?amazon\.([a-z.]+)\/.*[?&]asin=([A-Z0-9]{10})/i);
+  return m ? `https://www.amazon.${m[1]}/dp/${m[2].toUpperCase()}` : (expanded[u] || u);
+}
+// Liens courts Amazon (amzn.eu/…, a.co/…) dépliés par le serveur pour pouvoir afficher la photo
+const expanded = {}, expanding = {};
+const isShortAmazon = u => /^https?:\/\/(amzn\.(eu|to|com)|a\.co)\//i.test(u);
+async function expandShort(urls, done){
+  const todo = [...new Set(urls.filter(u => isShortAmazon(u) && !(u in expanded) && !expanding[u]))];
+  if (!todo.length) return;
+  todo.forEach(u => expanding[u] = true);
+  try { const r = await api("expandLinks", { urls: todo }); todo.forEach((u, i) => expanded[u] = r.links[i] || u); }
+  catch(e){ todo.forEach(u => expanded[u] = u); }
+  done && done();
 }
 const cleanWish = t => String(t || "").replace(/https?:\/\/[^\s<>"']+/g, shortUrl);
 // Une ligne = une envie : texte libre + éventuel(s) lien(s)
@@ -201,12 +213,15 @@ function wishItems(w){
 function linkLabel(u){ try { const h = new URL(u).hostname.replace(/^www\./, ""); return /amazon\.|amzn\./.test(h) ? "🛒 Voir sur Amazon" : "🔗 " + h; } catch(e){ return "🔗 Lien"; } }
 // Image d'un lien : photo du produit Amazon (via son code ASIN) ou lien direct vers une image
 function linkImage(u){
+  u = shortUrl(u);
   const a = u.match(/amazon\.[a-z.]+\/dp\/([A-Z0-9]{10})/i);
   if (a) return `https://images-na.ssl-images-amazon.com/images/P/${a[1].toUpperCase()}.01._SCLZZZZZZZ_.jpg`;
   return /\.(jpe?g|png|webp|gif)(\?|$)/i.test(u) ? u : "";
 }
 function wishHtml(w){
-  return `<ul class="wishlist">${wishItems(w).map(i => {
+  const shorts = wishItems(w).flatMap(i => i.urls).filter(u => isShortAmazon(u) && !(u in expanded));
+  if (shorts.length) expandShort(shorts, () => document.querySelectorAll("ul.wishlist[data-w]").forEach(ul => { ul.outerHTML = wishHtml(ul.dataset.w); }));
+  return `<ul class="wishlist" data-w="${esc(w)}">${wishItems(w).map(i => {
     const img = i.urls.map(linkImage).find(Boolean), links = i.urls.filter(u => !/\.(jpe?g|png|webp|gif)(\?|$)/i.test(u));
     return `<li>${img ? `<a class="wimg" target="_blank" rel="noopener nofollow" href="${esc(links[0] || img)}"><img src="${esc(img)}" alt="" loading="lazy" referrerpolicy="no-referrer" onload="if(this.naturalWidth<5)this.parentNode.remove()" onerror="this.parentNode.remove()"></a>` : ""}
       <div class="wbody">${i.label ? `<span>${esc(i.label)}</span>` : ""}${links.map(u => `<a class="wlink" target="_blank" rel="noopener nofollow" href="${esc(u)}">${esc(linkLabel(u))}</a>`).join("")}</div></li>`;
@@ -228,7 +243,8 @@ function bindWishEditor(id){
   const refresh = () => {
     const rows = [...box.querySelectorAll(".wline")];
     rows.forEach((r, i) => {
-      const v = r.querySelector(".winput").value.trim(), url = (v.match(/https?:\/\/[^\s<>"']+/) || [])[0], img = url ? linkImage(shortUrl(url)) : "";
+      const v = r.querySelector(".winput").value.trim(), url = (v.match(/https?:\/\/[^\s<>"']+/) || [])[0], img = url ? linkImage(url) : "";
+      if (url && isShortAmazon(url) && !(url in expanded)) expandShort([url], refresh);
       const th = r.querySelector(".wthumb");
       if (th.dataset.src !== img) { th.dataset.src = img; th.innerHTML = img ? `<img src="${esc(img)}" alt="" referrerpolicy="no-referrer" onload="if(this.naturalWidth<5)this.remove()" onerror="this.remove()">` : (v ? "🎁" : ""); }
       if (!img) th.textContent = v ? "🎁" : "";

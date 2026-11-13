@@ -96,7 +96,8 @@ function setWish(evId, pid, text) {
 // ce qui permet au site d'afficher l'image du produit. (Amazon bloque la lecture de ses pages depuis les serveurs Google.)
 const URL_RE = /https?:\/\/[^\s<>"']+/g;
 function amazonShort(u) {
-  const m = u.match(/^https?:\/\/(?:www\.)?amazon\.([a-z.]+)\/(?:[^?#]*\/)?(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})/i);
+  const m = u.match(/^https?:\/\/(?:www\.)?amazon\.([a-z.]+)\/(?:[^?#]*\/)?(?:dp|gp\/product|gp\/aw\/d|exec\/obidos\/ASIN|o\/ASIN)\/([A-Z0-9]{10})/i)
+    || u.match(/^https?:\/\/(?:www\.)?amazon\.([a-z.]+)\/.*[?&]asin=([A-Z0-9]{10})/i);
   return m ? "https://www.amazon." + m[1] + "/dp/" + m[2].toUpperCase() : u;
 }
 function expandLink(u) {
@@ -106,7 +107,7 @@ function expandLink(u) {
       const res = UrlFetchApp.fetch(url, { followRedirects: false, muteHttpExceptions: true });
       const loc = res.getHeaders()["Location"] || res.getHeaders()["location"];
       if (!loc) break;
-      url = String(loc);
+      url = /^\//.test(String(loc)) ? url.match(/^https?:\/\/[^\/]+/)[0] + loc : String(loc);
     }
   } catch (e) {}
   const out = amazonShort(url);
@@ -313,6 +314,12 @@ const ACTIONS = {
       try { withLock(() => { const fresh = load(ev.id), me = fresh.participants.find(x => x.id === p.id); if (me && !me.seen) { me.seen = new Date().toISOString(); store(fresh); } }); } catch (e) {}
     }
     return { g: p.name, r: r.name, b: ev.budget, d: ev.date, e: ev.name, w: getWish(ev.id, r.id), mw: getWish(ev.id, p.id) };
+  },
+
+  // Aperçu dans l'éditeur : déplie les liens courts Amazon (amzn.eu/…) pour afficher la photo avant l'enregistrement
+  expandLinks(req) {
+    const urls = (Array.isArray(req.urls) ? req.urls : []).slice(0, 15).map(String);
+    return { links: urls.map(u => /^https?:\/\/(amzn\.(eu|to|com)|a\.co)\/[^\s<>"']{1,200}$/i.test(u) ? expandLink(u) : amazonShort(u)) };
   },
 
   // Chaque participant modifie sa liste d'envies (avec son lien perso ou son code)
