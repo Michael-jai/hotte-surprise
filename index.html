@@ -368,12 +368,20 @@ function renderHome(){
   if (needLogin) googleButton(document.getElementById("gbtn"), renderHome);
   const lo = document.getElementById("logout");
   if (lo) lo.onclick = e => { e.preventDefault(); googleLogout(); renderHome(); };
-  // Connecté : on complète la liste avec les Secret Santa du compte Google (tous appareils)
-  if (g) api("myEvents", { idToken: g.token }).then(r => {
-    const known = new Set(mine.map(e => e.id));
-    const all = mine.concat(r.events.filter(e => !known.has(e.id)).map(e => ({ id: e.id, token: "g", name: e.name })));
-    if (all.length && document.getElementById("mine")) document.getElementById("mine").innerHTML = mineCard(all);
-  }).catch(() => {});
+  refreshMine(mine, g);
+}
+// Nettoie « Mes Secret Santa » : retire ceux supprimés sur le serveur, ajoute ceux du compte Google (tous appareils)
+async function refreshMine(mine, g){
+  const gone = id => api("getEvent", { eventId: id }).then(() => false, e => /n'existe pas/.test(e.message));
+  const checks = await Promise.all(mine.map(e => gone(e.id)));
+  let list = mine.filter((e, i) => !checks[i]);
+  if (list.length !== mine.length) mine.filter((e, i) => checks[i]).forEach(e => forgetEvent(e.id));
+  if (g) { try {
+    const r = await api("myEvents", { idToken: g.token }), known = new Set(list.map(e => e.id));
+    list = list.concat(r.events.filter(e => !known.has(e.id)).map(e => ({ id: e.id, token: "g", name: e.name })));
+  } catch(e){} }
+  const box = document.getElementById("mine");
+  if (box) box.innerHTML = list.length ? mineCard(list) : "";
 }
 function mineCard(list){
   return `<div class="card"><h2>Mes Secret Santa</h2><ul class="list">${list.map(e => `<li class="mine"><a href="#admin=${esc(e.id)}.${esc(e.token)}"><span>${esc(e.name)}</span><span class="muted">gérer →</span></a></li>`).join("")}</ul></div>`;
@@ -385,7 +393,7 @@ const adminAuth = (id, token) => token === "super" ? { eventId:id, superKey: sup
   : token === "g" ? { eventId:id, idToken: (googleSession() || {}).token || "" } : { eventId:id, adminToken:token };
 async function renderAdmin(id, token, data){
   setTimeout(() => document.body.classList.add("ready"), 600);
-  if (!data) { loading(); try { data = await api("adminGet", adminAuth(id, token)); } catch(e){ return fail(e.message); } }
+  if (!data) { loading(); try { data = await api("adminGet", adminAuth(id, token)); } catch(e){ if (/n'existe pas/.test(e.message)) forgetEvent(id); return fail(e.message); } }
   if (token !== "super" && token !== "g") rememberEvent({ id, token, name: data.name });
   document.title = data.name + " · Organisateur";
   const joinUrl = baseUrl() + "#e=" + id;
