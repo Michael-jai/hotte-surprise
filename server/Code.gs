@@ -1,11 +1,17 @@
 // Hotte Surprise : petit serveur Secret Santa sur Google Apps Script.
 // Déploiement : Déployer > Nouveau déploiement > Application Web
 //   Exécuter en tant que : Moi · Qui a accès : Tout le monde
-// FIN DU FICHIER : la dernière ligne est « // ===== FIN ===== ».
+// FIN DU FICHIER : la dernière ligne est « // À lancer depuis l'éditeur (menu des fonctions) pour remettre à zéro les compteurs de créations du jour
+function debloquerCreations() {
+  const all = props().getProperties();
+  Object.keys(all).forEach(k => { if (/^dayu?_/.test(k)) props().deleteProperty(k); });
+}
+// ===== FIN ===== ».
 const SITE = "https://michael-jai.github.io/hotte-surprise/";
 const CODE_DIGITS = 6;          // longueur du code secret envoyé à chaque participant
 const MAX_PARTICIPANTS = 40;     // limite liée à la taille de stockage (9 Ko par Secret Santa)
-const MAX_EVENTS_PER_DAY = 10;   // anti-abus : créations de Secret Santa par jour sur tout le site
+const MAX_EVENTS_PER_DAY = 10;   // anti-abus : créations de Secret Santa par jour et par compte Google
+const MAX_EVENTS_PER_DAY_SITE = 100; // anti-abus : créations par jour sur tout le site
 const MAX_CODE_FAILURES = 10;    // anti-devinette : codes faux tolérés par heure et par Secret Santa
 // Connexion Google pour les organisateurs : ID client OAuth (public). Vide = création libre sans connexion.
 const GOOGLE_CLIENT_ID = "841116298846-u2p0did8cuubiabmauqtsfvsmaf2qfp7.apps.googleusercontent.com";
@@ -244,13 +250,16 @@ const ACTIONS = {
   createEvent(req) {
     // Anti-abus : nombre de créations limité par jour (chaque création envoie un email)
     if (GOOGLE_CLIENT_ID && !req.idToken) throw new Error("Connecte-toi avec Google pour créer un Secret Santa.");
-    const dayKey = "day_" + new Date().toISOString().slice(0, 10);
-    const today = Number(props().getProperty(dayKey) || 0);
-    if (today >= MAX_EVENTS_PER_DAY) throw new Error("Trop de Secret Santa créés aujourd'hui. Réessaie demain.");
-    props().setProperty(dayKey, String(today + 1));
+    const day = new Date().toISOString().slice(0, 10), siteKey = "day_" + day;
+    const site = Number(props().getProperty(siteKey) || 0);
+    if (site >= MAX_EVENTS_PER_DAY_SITE) throw new Error("Trop de Secret Santa créés aujourd'hui sur le site. Réessaie demain.");
     // Avec la connexion Google activée, il faut être connecté pour créer, et l'email du compte devient celui de l'organisateur
     const owner = GOOGLE_CLIENT_ID ? googleEmail(req.idToken) : "";
     const name = clean(req.name), orgEmail = owner || normEmail(req.orgEmail);
+    const userKey = "dayu_" + day + "_" + hash(orgEmail).slice(0, 16), mine = Number(props().getProperty(userKey) || 0);
+    if (mine >= MAX_EVENTS_PER_DAY) throw new Error("Tu as créé trop de Secret Santa aujourd'hui. Réessaie demain.");
+    props().setProperty(siteKey, String(site + 1));
+    props().setProperty(userKey, String(mine + 1));
     if (!name) throw new Error("Donne un nom au Secret Santa.");
     if (!isEmail(orgEmail)) throw new Error("Adresse email de l'organisateur invalide.");
     const ev = {
@@ -509,6 +518,9 @@ function daysUntil(date) {
 }
 // Envoie le rappel « J-7 » (rattrapé jusqu'au jour J si le déclencheur a manqué un jour)
 function sendReminders() {
+  // Ménage : les compteurs de créations des jours passés ne servent plus
+  const today = new Date().toISOString().slice(0, 10), all = props().getProperties();
+  Object.keys(all).forEach(k => { if (/^dayu?_/.test(k) && k.indexOf(today) < 0) props().deleteProperty(k); });
   allEvents().forEach(ev => {
     if (!ev.date || ev.reminded || !/^\d{4}-\d{2}-\d{2}$/.test(ev.date)) return;
     const d = daysUntil(ev.date);
@@ -536,5 +548,10 @@ function sendReminders() {
     ev.reminded = true;
     try { store(ev); } catch (err) {}
   });
+}
+// À lancer depuis l'éditeur (menu des fonctions) pour remettre à zéro les compteurs de créations du jour
+function debloquerCreations() {
+  const all = props().getProperties();
+  Object.keys(all).forEach(k => { if (/^dayu?_/.test(k)) props().deleteProperty(k); });
 }
 // ===== FIN =====
