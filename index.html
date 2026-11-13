@@ -99,6 +99,9 @@ ul.list li:first-child{border-top:0}
 .cd span{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#fff8ec;opacity:.9}
 .cd-sub{margin:10px 0 0;font-size:.85rem;opacity:.85}
 .cd-done{margin:0;font-family:"Mountains of Christmas",cursive;font-weight:700;font-size:1.9rem;color:var(--gold)}
+ul.list li.mine{padding:0}
+ul.list li.mine a{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;padding:10px 4px;text-decoration:none}
+ul.list li.mine a span:first-child{text-decoration:underline}
 .err{color:#fff;background:var(--red);border-radius:12px;padding:10px 14px;font-weight:600;margin-top:10px}
 .link{flex:1;min-width:0;display:flex;gap:8px;align-items:center}
 .link code{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.8rem;color:var(--muted)}
@@ -366,7 +369,7 @@ function renderHome(){
   }).catch(() => {});
 }
 function mineCard(list){
-  return `<div class="card"><h2>Mes Secret Santa</h2><ul class="list">${list.map(e => `<li><a href="#admin=${esc(e.id)}.${esc(e.token)}">${esc(e.name)}</a><span class="muted">gérer →</span></li>`).join("")}</ul></div>`;
+  return `<div class="card"><h2>Mes Secret Santa</h2><ul class="list">${list.map(e => `<li class="mine"><a href="#admin=${esc(e.id)}.${esc(e.token)}"><span>${esc(e.name)}</span><span class="muted">gérer →</span></a></li>`).join("")}</ul></div>`;
 }
 
 // ---------- Espace organisateur ----------
