@@ -1,7 +1,47 @@
 // Hotte Surprise : petit serveur Secret Santa sur Google Apps Script.
 // Déploiement : Déployer > Nouveau déploiement > Application Web
 //   Exécuter en tant que : Moi · Qui a accès : Tout le monde
-// FIN DU FICHIER : la dernière ligne est « // ===== FIN ===== ».
+// FIN DU FICHIER : la dernière ligne est « // ===== RAPPELS (déclencheur quotidien) =====
+// À lancer une seule fois depuis l'éditeur : crée le déclencheur qui exécute sendReminders chaque matin.
+function installReminders() {
+  ScriptApp.getProjectTriggers().forEach(t => { if (t.getHandlerFunction() === "sendReminders") ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger("sendReminders").timeBased().everyDays(1).atHour(9).inTimezone("Europe/Paris").create();
+}
+function daysUntil(date) {
+  const today = Utilities.formatDate(new Date(), "Europe/Paris", "yyyy-MM-dd");
+  return Math.round((Date.parse(date + "T00:00:00Z") - Date.parse(today + "T00:00:00Z")) / 86400000);
+}
+// Envoie le rappel « J-7 » (rattrapé jusqu'au jour J si le déclencheur a manqué un jour)
+function sendReminders() {
+  allEvents().forEach(ev => {
+    if (!ev.date || ev.reminded || !/^\d{4}-\d{2}-\d{2}$/.test(ev.date)) return;
+    const d = daysUntil(ev.date);
+    if (d < 0 || d > 7) return;
+    const when = d === 0 ? "aujourd'hui" : d === 1 ? "demain" : "dans " + d + " jours";
+    const budget = ev.budget ? "<p>💰 Budget : <strong>" + escHtml(ev.budget) + "</strong></p>" : "";
+    try {
+      if (ev.status === "drawn") {
+        ev.participants.forEach(p => {
+          if (!p.email) return;
+          try {
+            mail(p.email, "⏰ Secret Santa « " + ev.name + " » " + when + " !", (d === 0 ? "C'est le grand jour, " : "Plus que " + d + " jour" + (d > 1 ? "s" : "") + ", ") + escHtml(p.name) + " !",
+              "<p>L'échange de cadeaux du Secret Santa a lieu <strong>" + when + "</strong>. As-tu trouvé ton cadeau ? 🎁</p>" + budget +
+              button(SITE + "#e=" + ev.id + "&t=" + p.token, "Revoir à qui j'offre"));
+          } catch (err) {}
+        });
+        mail(ev.orgEmail, "⏰ Secret Santa « " + ev.name + " » " + when, "Rappel envoyé !",
+          "<p>Les participants avec un email ont reçu un rappel : l'échange a lieu <strong>" + when + "</strong>.</p>" +
+          (ev.participants.some(p => !p.email) ? "<p>Pense à prévenir ceux qui n'ont pas d'email : <strong>" + escHtml(ev.participants.filter(p => !p.email).map(p => p.name).join(", ")) + "</strong>.</p>" : ""));
+      } else {
+        mail(ev.orgEmail, "⏰ Secret Santa « " + ev.name + " » : le tirage n'est pas fait", "L'échange a lieu " + when + " !",
+          "<p>Le tirage n'a pas encore été lancé (" + ev.participants.length + " inscrit" + (ev.participants.length > 1 ? "s" : "") + "). Pense à le faire vite pour laisser le temps à chacun de trouver un cadeau.</p>");
+      }
+    } catch (err) {}
+    ev.reminded = true;
+    try { store(ev); } catch (err) {}
+  });
+}
+// ===== FIN ===== ».
 const SITE = "https://michael-jai.github.io/hotte-surprise/";
 const CODE_DIGITS = 6;          // longueur du code secret envoyé à chaque participant
 const MAX_PARTICIPANTS = 40;     // limite liée à la taille de stockage (9 Ko par Secret Santa)
@@ -334,6 +374,7 @@ const ACTIONS = {
         ev.exclusions = ev.exclusions.filter(x => x.indexOf(req.removeId) < 0);
       }
       ["name", "budget", "date"].forEach(k => { if (req[k] != null) ev[k] = clean(req[k], k === "name" ? 80 : 30); });
+      if (req.date != null) ev.reminded = false;
       store(ev);
       return adminView(ev);
     });

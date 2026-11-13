@@ -86,6 +86,13 @@ ul.list li:first-child{border-top:0}
 .x{background:none;color:var(--muted);padding:4px 8px}
 .muted{color:var(--muted);font-size:.9rem}
 .hint{color:#dbe7f0;text-align:center;font-size:.9rem}
+.countdown{margin:14px 0 6px}
+.cd-title{margin:0 0 8px;font-weight:600}
+.cd{display:flex;justify-content:center;gap:8px}
+.cd div{background:linear-gradient(160deg,#c62828,#8e1b1b);color:#fff;border-radius:12px;padding:8px 0;width:64px;box-shadow:0 4px 12px rgba(0,0,0,.18)}
+.cd b{display:block;font-size:24px;line-height:1.1;font-variant-numeric:tabular-nums}
+.cd span{font-size:11px;opacity:.85;text-transform:uppercase;letter-spacing:.04em}
+.cd-done{font-weight:700;font-size:18px;margin:0}
 .err{color:#fff;background:var(--red);border-radius:12px;padding:10px 14px;font-weight:600;margin-top:10px}
 .link{flex:1;min-width:0;display:flex;gap:8px;align-items:center}
 .link code{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.8rem;color:var(--muted)}
@@ -117,6 +124,24 @@ ul.list li:first-child{border-top:0}
 <script>
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
+// ---------- Compte à rebours jusqu'au jour de l'échange ----------
+function countdown(date){
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "")) return "";
+  return `<div class="countdown" data-date="${esc(date)}" aria-live="off"></div>`;
+}
+function tickCountdowns(){
+  document.querySelectorAll(".countdown").forEach(el => {
+    const [y, m, d] = el.dataset.date.split("-").map(Number);
+    const ms = new Date(y, m - 1, d) - new Date();
+    if (ms <= -86400000) { el.innerHTML = `<p class="cd-done">L'échange a eu lieu 🎄</p>`; return; }
+    if (ms <= 0) { el.innerHTML = `<p class="cd-done">🎉 C'est le grand jour !</p>`; return; }
+    const s = Math.floor(ms / 1000), parts = [[Math.floor(s / 86400), "jours"], [Math.floor(s / 3600) % 24, "heures"], [Math.floor(s / 60) % 60, "min"], [s % 60, "sec"]];
+    el.innerHTML = `<p class="cd-title">⏳ Échange des cadeaux dans</p><div class="cd">${parts.map(([n, l]) => `<div><b>${String(n).padStart(2, "0")}</b><span>${l}</span></div>`).join("")}</div>`;
+  });
+}
+setInterval(tickCountdowns, 1000);
+new MutationObserver(() => { if (document.querySelector(".countdown:empty")) tickCountdowns(); }).observe(document.documentElement, { childList: true, subtree: true });
+
 // ---------- Mode révélation ----------
 function renderReveal(data){
   document.title = "Ton Secret Santa";
@@ -139,6 +164,7 @@ function renderReveal(data){
         <div class="big">${esc(data.r)}</div>
         ${data.b ? `<p>💰 Budget : <strong>${esc(data.b)}</strong></p>` : ""}
         ${data.d ? `<p>📅 Échange des cadeaux : <strong>${esc(new Date(data.d).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"}))}</strong></p>` : ""}
+        ${countdown(data.d)}
         <p class="muted">Chut, c'est un secret 🤫</p>
       </div>
     </div>`;
@@ -239,7 +265,7 @@ function bindCopy(root){
 }
 const baseUrl = () => location.href.split("#")[0];
 const fmtDate = d => new Date(d).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"});
-const eventInfo = ev => `${ev.budget ? `<p>💰 Budget : <strong>${esc(ev.budget)}</strong></p>` : ""}${ev.date ? `<p>📅 Échange : <strong>${esc(fmtDate(ev.date))}</strong></p>` : ""}`;
+const eventInfo = ev => `${ev.budget ? `<p>💰 Budget : <strong>${esc(ev.budget)}</strong></p>` : ""}${ev.date ? `<p>📅 Échange : <strong>${esc(fmtDate(ev.date))}</strong></p>` : ""}${countdown(ev.date)}`;
 const app = () => document.getElementById("app");
 const hero = (small) => `<img class="hero${small?" small":""}" src="assets/hero.jpg" alt="" onerror="this.remove()">`;
 const loading = () => { app().innerHTML = hero(true) + `<div class="card reveal"><div class="spinner"></div><p class="muted">Chargement…</p></div>`; };
@@ -302,7 +328,7 @@ function renderHome(){
         <label>Nom</label><input id="name" placeholder="Noël en famille 2026" required>
         <div class="row">
           <div><label>Budget</label><input id="budget" placeholder="30 €"></div>
-          <div><label>Date de l'échange</label><input id="date" type="date"></div>
+          <div><label>Date de l'échange <span class="muted" style="font-weight:400">(compte à rebours + rappel J-7)</span></label><input id="date" type="date"></div>
         </div>
         ${GOOGLE_CLIENT_ID ? "" : `<label>Ton email (pour recevoir ton accès organisateur)</label><input id="email" type="email" required autocomplete="email">`}
         <button class="primary big" style="margin-top:16px">Créer</button>
