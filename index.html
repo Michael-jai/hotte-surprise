@@ -189,6 +189,7 @@ function snow(){
 snow();
 
 // ---------- Serveur (Google Apps Script) ----------
+const MAX_PEOPLE = 40;  // même limite que le serveur
 const API_URL = "https://script.google.com/macros/s/AKfycbwm2KjPCcGVJFwsQXmCtLmKH0j3-nqV_HB-3sOvIJNM333204rQ3JAOXXQvkvFojZsG/exec";
 
 async function api(action, data){
@@ -257,6 +258,7 @@ function renderHome(){
     ${mine.length ? `<div class="card"><h2>Mes Secret Santa</h2><ul class="list">${mine.map(e => `<li><a href="#admin=${esc(e.id)}.${esc(e.token)}">${esc(e.name)}</a><span class="muted">gérer →</span></li>`).join("")}</ul></div>` : ""}
     <div class="card">
       <h2>🎄 Créer un Secret Santa</h2>
+      <p class="muted" style="margin-top:0">Jusqu'à ${MAX_PEOPLE} participants par Secret Santa.</p>
       <form id="create">
         <label>Nom</label><input id="name" placeholder="Noël en famille 2026" required>
         <div class="row">
@@ -300,12 +302,12 @@ async function renderAdmin(id, token, data){
     <div class="card">
       <h2>1. Invite les participants</h2>
       ${eventInfo(data)}
-      ${open ? `<p class="muted" style="margin-top:0">Envoie ce lien à tout le monde. Chacun s'inscrit avec son email et reçoit un code secret. Si tu participes, inscris-toi aussi.</p>
+      ${open ? `<p class="muted" style="margin-top:0">Envoie ce lien à tout le monde (${MAX_PEOPLE} participants maximum). Chacun s'inscrit avec son email et reçoit un code secret. Si tu participes, inscris-toi aussi.</p>
       ${sendButtons(invite, joinUrl)}` : `<p class="muted">Les inscriptions sont fermées.</p>`}
     </div>
 
     <div class="card">
-      <h2>2. Inscrits (${data.participants.length}) <button class="x" id="refresh" title="Actualiser">🔄 Actualiser</button></h2>
+      <h2>2. Inscrits (${data.participants.length}/${MAX_PEOPLE}) <button class="x" id="refresh" title="Actualiser">🔄 Actualiser</button></h2>
       ${data.participants.length ? "" : `<p class="muted">Personne pour l'instant. Les inscriptions apparaîtront ici.</p>`}
       ${open ? `<form class="row" id="addName" style="margin-top:6px"><input id="addNameInput" placeholder="Inscrire quelqu'un sans email (prénom)" autocomplete="off"><button>Inscrire</button></form>
       <p class="muted" style="margin:6px 0 0">Tu recevras son code secret par email, à lui transmettre.</p>` : ""}
@@ -381,7 +383,7 @@ async function renderEvent(id, token){
       <p class="muted" style="margin:0">Secret Santa</p>
       <h1>${esc(ev.name)}</h1>
       ${eventInfo(ev)}
-      <p class="muted">${ev.count} inscrit${ev.count>1?"s":""}${open ? "" : " · tirage effectué 🎉"}</p>
+      <p class="muted">${ev.count}/${MAX_PEOPLE} inscrit${ev.count>1?"s":""}${open ? "" : " · tirage effectué 🎉"}</p>
     </div>
     ${open ? `
     <div class="card">
