@@ -272,7 +272,7 @@ const loading = () => { app().innerHTML = hero(true) + `<div class="card reveal"
 const fail = (m) => { app().innerHTML = hero(true) + `<div class="card reveal"><h1>Oups</h1><p>${esc(m)}</p><p><a href="${baseUrl()}">Retour à l'accueil</a></p></div>`; };
 
 // ---------- Connexion Google (organisateurs) ----------
-const GOOGLE_CLIENT_ID = "";
+const GOOGLE_CLIENT_ID = "841116298846-u2p0did8cuubiabmauqtsfvsmaf2qfp7.apps.googleusercontent.com";
 function googleSession(){
   try {
     const g = JSON.parse(sessionStorage.getItem("hotte-google") || "null");
