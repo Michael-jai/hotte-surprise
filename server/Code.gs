@@ -1,12 +1,7 @@
 // Hotte Surprise : petit serveur Secret Santa sur Google Apps Script.
 // Déploiement : Déployer > Nouveau déploiement > Application Web
 //   Exécuter en tant que : Moi · Qui a accès : Tout le monde
-// FIN DU FICHIER : la dernière ligne est « // À lancer depuis l'éditeur (menu des fonctions) pour remettre à zéro les compteurs de créations du jour
-function debloquerCreations() {
-  const all = props().getProperties();
-  Object.keys(all).forEach(k => { if (/^dayu?_/.test(k)) props().deleteProperty(k); });
-}
-// ===== FIN ===== ».
+// FIN DU FICHIER : la dernière ligne est « // ===== FIN ===== ».
 const SITE = "https://michael-jai.github.io/hotte-surprise/";
 const CODE_DIGITS = 6;          // longueur du code secret envoyé à chaque participant
 const MAX_PARTICIPANTS = 40;     // limite liée à la taille de stockage (9 Ko par Secret Santa)
@@ -548,6 +543,11 @@ function sendReminders() {
     ev.reminded = true;
     try { store(ev); } catch (err) {}
   });
+}
+// À lancer depuis l'éditeur (menu des fonctions) pour remettre à zéro les compteurs de créations du jour
+function debloquerCreations() {
+  const all = props().getProperties();
+  Object.keys(all).forEach(k => { if (/^dayu?_/.test(k)) props().deleteProperty(k); });
 }
 // À lancer depuis l'éditeur (menu des fonctions) pour remettre à zéro les compteurs de créations du jour
 function debloquerCreations() {
