@@ -109,7 +109,8 @@ function allEvents() {
 function adminView(ev) {
   return Object.assign(publicEvent(ev), {
     orgEmail: ev.orgEmail,
-    participants: ev.participants.map(p => ({ id: p.id, name: p.name, email: p.email })),
+    // « seen » dit seulement si la personne a ouvert son tirage, jamais qui elle a tiré
+    participants: ev.participants.map(p => ({ id: p.id, name: p.name, email: p.email, seen: ev.status === "drawn" ? !!p.seen : undefined })),
     exclusions: ev.exclusions,
     // Jamais le résultat du tirage : l'organisateur ne voit que le résultat de la vérification.
     verified: ev.status === "drawn" ? (() => { try { verify(ev.participants.map(p => p.id), ev.exclusions, ev.assign); return true; } catch (e) { return false; } })() : null
@@ -257,6 +258,10 @@ const ACTIONS = {
     if (!p) throw new Error("Ce lien n'est plus valable. Utilise ton code secret.");
     if (ev.status !== "drawn") return { waiting: true, name: p.name, event: publicEvent(ev) };
     const r = ev.participants.find(x => x.id === ev.assign[p.id]);
+    if (!p.seen) {
+      // Note que la personne a vu son tirage (pour que l'organisateur sache qui relancer)
+      try { withLock(() => { const fresh = load(ev.id), me = fresh.participants.find(x => x.id === p.id); if (me && !me.seen) { me.seen = new Date().toISOString(); store(fresh); } }); } catch (e) {}
+    }
     return { g: p.name, r: r.name, b: ev.budget, d: ev.date, e: ev.name };
   },
 
@@ -379,11 +384,26 @@ const ACTIONS = {
     const p = ev.participants.find(x => x.id === req.participantId);
     if (!p) throw new Error("Participant introuvable.");
     if (!p.email) throw new Error(p.name + " n'a pas d'email : il découvre son tirage sur le site avec son code.");
-    mail(p.email, "🎁 Ton tirage du Secret Santa « " + ev.name + " »", "Rappel, " + escHtml(p.name) + " !",
-      "<p>Voici à nouveau ton lien pour découvrir ton tirage.</p>" + button(SITE + "#e=" + ev.id + "&t=" + p.token, "Découvrir mon tirage"));
+    sendDrawReminder(ev, p);
     return { ok: true };
+  },
+
+  // Relance par email tous ceux qui n'ont pas encore ouvert leur tirage
+  adminRemindUnseen(req) {
+    const ev = admin(req);
+    if (ev.status !== "drawn") throw new Error("Le tirage n'a pas encore eu lieu.");
+    const todo = ev.participants.filter(p => !p.seen && p.email);
+    let sent = 0;
+    todo.forEach(p => { try { sendDrawReminder(ev, p); sent++; } catch (e) {} });
+    return { sent, noEmail: ev.participants.filter(p => !p.seen && !p.email).map(p => p.name) };
   }
 };
+function sendDrawReminder(ev, p) {
+  mail(p.email, "🎁 Rappel : découvre ton tirage du Secret Santa « " + ev.name + " »", "Psst, " + escHtml(p.name) + " !",
+    (p.seen ? "<p>Voici à nouveau ton lien pour revoir ton tirage.</p>"
+            : "<p>Tu n'as pas encore découvert à qui tu offres un cadeau. Clique vite sur le bouton 🤫</p>") +
+    button(SITE + "#e=" + ev.id + "&t=" + p.token, "Découvrir mon tirage"));
+}
 // À lancer depuis l'éditeur pour accorder toutes les autorisations (emails, service externe, déclencheurs)
 function autoriser() {
   UrlFetchApp.fetch("https://oauth2.googleapis.com/tokeninfo?id_token=test", { muteHttpExceptions: true });

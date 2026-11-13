@@ -99,6 +99,10 @@ ul.list li:first-child{border-top:0}
 .cd span{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#fff8ec;opacity:.9}
 .cd-sub{margin:10px 0 0;font-size:.85rem;opacity:.85}
 .cd-done{margin:0;font-family:"Mountains of Christmas",cursive;font-weight:700;font-size:1.9rem;color:var(--gold)}
+.seen{color:var(--green);font-weight:700;white-space:nowrap}
+.unseen{color:#b26a00;font-weight:700;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.seenbar{height:10px;border-radius:99px;background:var(--soft);overflow:hidden;margin-top:12px}
+.seenbar div{height:100%;background:linear-gradient(90deg,var(--green),#2fa66b);border-radius:99px;transition:width .6s}
 ul.list li.mine{padding:0}
 ul.list li.mine a{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;padding:10px 4px;text-decoration:none}
 ul.list li.mine a span:first-child{text-decoration:underline}
@@ -402,7 +406,11 @@ async function renderAdmin(id, token, data){
       ${data.participants.length ? "" : `<p class="muted">Personne pour l'instant. Les inscriptions apparaîtront ici.</p>`}
       ${open ? `<form class="row" id="addName" style="margin-top:6px"><input id="addNameInput" placeholder="Inscrire quelqu'un sans email (prénom)" autocomplete="off"><button>Inscrire</button></form>
       <p class="muted" style="margin:6px 0 0">Tu recevras son code secret par email, à lui transmettre.</p>` : ""}
-      <ul class="list">${data.participants.map(p => `<li><span class="pname">${esc(p.name)} <span class="muted">${p.email ? esc(p.email) : "sans email"}</span></span>${open ? `<button class="x" data-del="${esc(p.id)}" aria-label="Retirer ${esc(p.name)}">✕</button>` : (p.email ? `<button class="x" data-resend="${esc(p.id)}">Renvoyer l'email</button>` : `<span class="muted">avec son code</span>`)}</li>`).join("")}</ul>
+      <ul class="list">${data.participants.map(p => `<li><span class="pname">${esc(p.name)} <span class="muted">${p.email ? esc(p.email) : "sans email"}</span></span>${open ? `<button class="x" data-del="${esc(p.id)}" aria-label="Retirer ${esc(p.name)}">✕</button>` : (p.seen ? `<span class="seen">✅ vu</span>` : `<span class="unseen">⏳ pas vu${p.email ? ` <button class="x" data-resend="${esc(p.id)}">Relancer</button>` : ` <span class="muted">à prévenir</span>`}</span>`)}</li>`).join("")}</ul>
+      ${!open && data.participants.length ? (() => { const seen = data.participants.filter(p => p.seen).length, n = data.participants.length, todo = data.participants.filter(p => !p.seen && p.email).length;
+        return `<div class="seenbar"><div style="width:${Math.round(seen / n * 100)}%"></div></div>
+        <p class="muted" style="margin:6px 0 0">👀 <strong>${seen}/${n}</strong> ont découvert leur tirage.${seen === n ? " Tout le monde l'a vu 🎉" : ""}</p>
+        ${todo ? `<button class="primary" id="remindAll" style="margin-top:10px">📧 Relancer les ${todo} qui n'ont pas vu</button><p id="remindMsg" class="ok hidden"></p>` : ""}`; })() : ""}
     </div>
 
     ${open ? `
@@ -435,6 +443,11 @@ async function renderAdmin(id, token, data){
   };
   document.getElementById("refresh").onclick = e => call(e.currentTarget, "adminGet");
   app().querySelectorAll("[data-del]").forEach(b => b.onclick = () => call(b, "adminUpdate", { removeId: b.dataset.del }));
+  const remindAll = document.getElementById("remindAll");
+  if (remindAll) remindAll.onclick = () => busy(remindAll, async () => {
+    const r = await api("adminRemindUnseen", adminAuth(id, token));
+    const m = document.getElementById("remindMsg"); m.classList.remove("hidden"); m.textContent = `📧 Rappel envoyé à ${r.sent} personne${r.sent > 1 ? "s" : ""}.` + (r.noEmail.length ? ` Pense à prévenir : ${r.noEmail.join(", ")}.` : "");
+  });
   app().querySelectorAll("[data-resend]").forEach(b => b.onclick = () => busy(b, async () => { await api("adminResend", Object.assign(adminAuth(id, token), { participantId: b.dataset.resend })); b.textContent = "Envoyé ✓"; }));
   app().querySelectorAll("[data-delex]").forEach(b => b.onclick = () => { const ex = data.exclusions.slice(); ex.splice(+b.dataset.delex,1); call(b, "adminUpdate", { exclusions: ex }); });
   const addEx = document.getElementById("addEx");
