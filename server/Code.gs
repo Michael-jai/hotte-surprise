@@ -4,7 +4,9 @@
 // FIN DU FICHIER : la dernière ligne est « // ===== FIN ===== ».
 const SITE = "https://michael-jai.github.io/hotte-surprise/";
 const CODE_DIGITS = 6;          // longueur du code secret envoyé à chaque participant
-const MAX_PARTICIPANTS = 60;
+const MAX_PARTICIPANTS = 40;     // limite liée à la taille de stockage (9 Ko par Secret Santa)
+const MAX_EVENTS_PER_DAY = 10;   // anti-abus : créations de Secret Santa par jour sur tout le site
+const MAX_CODE_FAILURES = 10;    // anti-devinette : codes faux tolérés par heure et par Secret Santa
 
 function doPost(e) {
   let out;
@@ -29,7 +31,11 @@ function load(id) {
   if (!raw) throw new Error("Ce Secret Santa n'existe pas ou a été supprimé.");
   return JSON.parse(raw);
 }
-function store(ev) { props().setProperty("ev_" + ev.id, JSON.stringify(ev)); }
+function store(ev) {
+  const json = JSON.stringify(ev);
+  if (json.length > 8800) throw new Error("Ce Secret Santa est trop grand pour être enregistré (trop de participants).");
+  props().setProperty("ev_" + ev.id, json);
+}
 function withLock(fn) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
@@ -37,10 +43,16 @@ function withLock(fn) {
 }
 
 // ---------- Outils ----------
+// Aléatoire sûr : octets issus de Utilities.getUuid() (UUID v4 aléatoires), sans biais (tirage par rejet)
 function rand(n, alphabet) {
   alphabet = alphabet || "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
-  let s = "";
-  for (let i = 0; i < n; i++) s += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+  const max = 256 - (256 % alphabet.length);
+  let s = "", pool = [];
+  while (s.length < n) {
+    if (!pool.length) pool = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, Utilities.getUuid() + Utilities.getUuid()).map(b => (b + 256) % 256);
+    const b = pool.pop();
+    if (b < max) s += alphabet.charAt(b % alphabet.length);
+  }
   return s;
 }
 function hash(s) {
@@ -64,7 +76,7 @@ function admin(req) {
 function checkSuper(key) {
   const h = props().getProperty("SUPER_KEY_HASH");
   if (!h) throw new Error("Le mot de passe administrateur n'est pas encore créé.");
-  if (tooManyFailures("super", false)) throw new Error("Trop d'essais. Réessaie dans 15 minutes.");
+  if (tooManyFailures("super", false)) throw new Error("Trop d'essais. Réessaie dans une heure.");
   if (hash("super:" + key) !== h) { tooManyFailures("super", true); throw new Error("Mot de passe administrateur incorrect."); }
 }
 function allEvents() {
@@ -91,6 +103,7 @@ function mail(to, subject, title, bodyHtml) {
     '<div style="background:#0e2a47;color:#fff;padding:20px;text-align:center"><div style="font-size:28px">🎁</div>' +
     '<div style="font-size:22px;font-weight:bold">Hotte <span style="color:#f4b400">Surprise</span></div></div>' +
     '<div style="padding:22px;color:#2b2522;font-size:15px;line-height:1.5"><h2 style="color:#c62828;margin-top:0">' + title + '</h2>' + bodyHtml + '</div></div>';
+  if (MailApp.getRemainingDailyQuota() < 3) throw new Error("La limite d'emails du jour est atteinte. Réessaie demain.");
   MailApp.sendEmail({ to: to, subject: subject, htmlBody: html, name: "Hotte Surprise" });
 }
 const button = (url, label) =>
@@ -108,9 +121,9 @@ function uniqueCode(ev) {
 function tooManyFailures(evId, add) {
   const key = "fail_" + evId, now = Date.now();
   let list = []; try { list = JSON.parse(props().getProperty(key) || "[]"); } catch (e) {}
-  list = list.filter(t => now - t < 15 * 60 * 1000);
+  list = list.filter(t => now - t < 60 * 60 * 1000);
   if (add) { list.push(now); props().setProperty(key, JSON.stringify(list)); }
-  return list.length >= 20;
+  return list.length >= MAX_CODE_FAILURES;
 }
 
 // ---------- Tirage ----------
@@ -152,6 +165,11 @@ function verify(ids, exclusions, res) {
 // ---------- Actions ----------
 const ACTIONS = {
   createEvent(req) {
+    // Anti-abus : nombre de créations limité par jour (chaque création envoie un email)
+    const dayKey = "day_" + new Date().toISOString().slice(0, 10);
+    const today = Number(props().getProperty(dayKey) || 0);
+    if (today >= MAX_EVENTS_PER_DAY) throw new Error("Trop de Secret Santa créés aujourd'hui. Réessaie demain.");
+    props().setProperty(dayKey, String(today + 1));
     const name = clean(req.name), orgEmail = normEmail(req.orgEmail);
     if (!name) throw new Error("Donne un nom au Secret Santa.");
     if (!isEmail(orgEmail)) throw new Error("Adresse email de l'organisateur invalide.");
@@ -185,8 +203,11 @@ const ACTIONS = {
       const again = !!p;
       if (!p && ev.participants.some(x => x.name.toLowerCase() === name.toLowerCase()))
         throw new Error("Ce prénom est déjà inscrit. Ajoute l'initiale de ton nom, par exemple « " + name + " D. ».");
+      if (p && p.lastMail && Date.now() - p.lastMail < 2 * 60 * 1000)
+        throw new Error("Un email vient déjà d'être envoyé à cette adresse. Attends 2 minutes avant de réessayer.");
       const code = uniqueCode(ev);
       if (!p) { p = { id: rand(8), name, email }; ev.participants.push(p); }
+      p.lastMail = Date.now();
       p.codeHash = hash(ev.id + ":" + code);
       p.token = rand(24);
       store(ev);
@@ -206,7 +227,7 @@ const ACTIONS = {
     if (req.token) p = ev.participants.find(x => x.token && x.token === req.token);
     else {
       // Le code secret seul suffit (il est unique dans ce Secret Santa)
-      if (tooManyFailures(ev.id, false)) throw new Error("Trop d'essais. Réessaie dans 15 minutes.");
+      if (tooManyFailures(ev.id, false)) throw new Error("Trop d'essais. Réessaie dans une heure.");
       const code = clean(req.code, 12).replace(/\D/g, ""), h = hash(ev.id + ":" + code);
       p = ev.participants.find(x => x.codeHash === h);
       if (!p) { tooManyFailures(ev.id, true); throw new Error("Code secret incorrect."); }
