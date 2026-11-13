@@ -86,13 +86,19 @@ ul.list li:first-child{border-top:0}
 .x{background:none;color:var(--muted);padding:4px 8px}
 .muted{color:var(--muted);font-size:.9rem}
 .hint{color:#dbe7f0;text-align:center;font-size:.9rem}
-.countdown{margin:14px 0 6px}
-.cd-title{margin:0 0 8px;font-weight:600}
-.cd{display:flex;justify-content:center;gap:8px}
-.cd div{background:linear-gradient(160deg,#c62828,#8e1b1b);color:#fff;border-radius:12px;padding:8px 0;width:64px;box-shadow:0 4px 12px rgba(0,0,0,.18)}
-.cd b{display:block;font-size:24px;line-height:1.1;font-variant-numeric:tabular-nums}
-.cd span{font-size:11px;opacity:.85;text-transform:uppercase;letter-spacing:.04em}
-.cd-done{font-weight:700;font-size:18px;margin:0}
+.countdown{position:relative;overflow:hidden;margin:16px 0 8px;padding:14px 10px 12px;border-radius:18px;color:#fff8ec;
+  background:radial-gradient(120% 90% at 50% 0%,#2a8a5a 0%,#145c3a 55%,#0d3f28 100%);
+  box-shadow:inset 0 0 0 2px rgba(244,180,0,.55),0 8px 20px rgba(0,0,0,.22)}
+.countdown:before,.countdown:after{content:"❄";position:absolute;font-size:22px;opacity:.25;top:6px}
+.countdown:before{left:12px} .countdown:after{right:12px;top:auto;bottom:6px;transform:rotate(25deg)}
+.cd-title{margin:0 0 10px;font-family:"Mountains of Christmas",cursive;font-weight:700;font-size:1.6rem;line-height:1;color:var(--gold);text-shadow:0 2px 0 rgba(0,0,0,.3)}
+.cd{display:flex;justify-content:center;gap:6px;max-width:340px;margin:0 auto}
+.cd div{flex:1;max-width:76px;display:flex;flex-direction:column;align-items:center;gap:5px}
+.cd b{display:block;width:100%;padding:8px 0 6px;border-radius:12px;font-size:1.9rem;font-weight:800;line-height:1;color:var(--red);
+  font-variant-numeric:tabular-nums;background:linear-gradient(#fffdf8 0 49%,#f1e6d6 51% 100%);box-shadow:0 3px 0 #b8860b,0 6px 10px rgba(0,0,0,.25)}
+.cd span{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#fff8ec;opacity:.9}
+.cd-sub{margin:10px 0 0;font-size:.85rem;opacity:.85}
+.cd-done{margin:0;font-family:"Mountains of Christmas",cursive;font-weight:700;font-size:1.9rem;color:var(--gold)}
 .err{color:#fff;background:var(--red);border-radius:12px;padding:10px 14px;font-weight:600;margin-top:10px}
 .link{flex:1;min-width:0;display:flex;gap:8px;align-items:center}
 .link code{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.8rem;color:var(--muted)}
@@ -136,7 +142,8 @@ function tickCountdowns(){
     if (ms <= -86400000) { el.innerHTML = `<p class="cd-done">L'échange a eu lieu 🎄</p>`; return; }
     if (ms <= 0) { el.innerHTML = `<p class="cd-done">🎉 C'est le grand jour !</p>`; return; }
     const s = Math.floor(ms / 1000), parts = [[Math.floor(s / 86400), "jours"], [Math.floor(s / 3600) % 24, "heures"], [Math.floor(s / 60) % 60, "min"], [s % 60, "sec"]];
-    el.innerHTML = `<p class="cd-title">⏳ Échange des cadeaux dans</p><div class="cd">${parts.map(([n, l]) => `<div><b>${String(n).padStart(2, "0")}</b><span>${l}</span></div>`).join("")}</div>`;
+    if (!el.querySelector(".cd")) el.innerHTML = `<p class="cd-title">Le grand jour approche !</p><div class="cd">${parts.map(([, l]) => `<div><b></b><span>${l}</span></div>`).join("")}</div><p class="cd-sub">avant l'échange des cadeaux 🎁</p>`;
+    el.querySelectorAll(".cd b").forEach((b, i) => { const v = String(parts[i][0]).padStart(2, "0"); if (b.textContent !== v) b.textContent = v; });
   });
 }
 setInterval(tickCountdowns, 1000);
