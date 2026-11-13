@@ -190,7 +190,7 @@ function snow(){
 snow();
 
 // ---------- Serveur (Google Apps Script) ----------
-const API_URL = "";   // URL du déploiement Apps Script (…/exec)
+const API_URL = "https://script.google.com/macros/s/AKfycbwm2KjPCcGVJFwsQXmCtLmKH0j3-nqV_HB-3sOvIJNM333204rQ3JAOXXQvkvFojZsG/exec";
 
 async function api(action, data){
   if (!API_URL) throw new Error("Le serveur n'est pas encore configuré.");
@@ -268,7 +268,8 @@ function renderHome(){
         <button class="primary big" style="margin-top:16px">Créer</button>
       </form>
       <p id="msg" class="hidden"></p>
-    </div>`;
+    </div>
+    <p class="hint">Pas envie d'inscriptions ? <a href="simple.html" style="color:#fff">Utilise la version rapide</a>, où tu envoies toi-même les liens.</p>`;
   document.getElementById("create").onsubmit = e => {
     e.preventDefault();
     busy(e.submitter || e.target.querySelector("button"), async () => {
