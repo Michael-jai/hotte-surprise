@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hotte Surprise</title>
+<style>
+:root{
+  --bg:#fbf7f2; --card:#ffffff; --ink:#2b2522; --muted:#7a6f69; --line:#e8dfd6;
+  --red:#b3261e; --red-ink:#fff; --green:#1f6f4a; --soft:#f6efe7;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#1b1715; --card:#25201d; --ink:#f3ece6; --muted:#a99d95; --line:#3a332e;
+    --red:#e0574d; --red-ink:#1b1715; --green:#5fc093; --soft:#2d2723; }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:640px;margin:0 auto;padding:32px 16px 64px}
+h1{font-size:2rem;margin:0 0 4px;letter-spacing:-.02em}
+h1 span{color:var(--red)}
+.sub{color:var(--muted);margin:0 0 28px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:16px}
+.card h2{font-size:1.05rem;margin:0 0 12px}
+label{display:block;font-size:.85rem;color:var(--muted);margin:10px 0 4px}
+input,select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font:inherit}
+.row{display:flex;gap:8px}
+.row>*{flex:1;min-width:0}
+.row button{flex:0 0 auto}
+button{font:inherit;border:0;border-radius:10px;padding:10px 16px;cursor:pointer;background:var(--soft);color:var(--ink)}
+button.primary{background:var(--red);color:var(--red-ink);font-weight:600}
+button:disabled{opacity:.5;cursor:not-allowed}
+ul.list{list-style:none;margin:12px 0 0;padding:0}
+ul.list li{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px solid var(--line)}
+ul.list li:first-child{border-top:0}
+.x{background:none;color:var(--muted);padding:4px 8px}
+.muted{color:var(--muted);font-size:.9rem}
+.err{color:var(--red);font-weight:500;margin-top:10px}
+.link{flex:1;min-width:0;display:flex;gap:8px;align-items:center}
+.link code{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.8rem;color:var(--muted)}
+.reveal{text-align:center;padding:40px 20px}
+.reveal .big{font-size:2.4rem;font-weight:700;color:var(--red);margin:12px 0}
+.gift{font-size:3rem}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<script>
+// ---------- Encodage des liens (obfuscation légère, pas du chiffrement) ----------
+const KEY = "hotte";
+function encode(obj){
+  const s = unescape(encodeURIComponent(JSON.stringify(obj)));
+  let o = ""; for (let i=0;i<s.length;i++) o += String.fromCharCode(s.charCodeAt(i) ^ KEY.charCodeAt(i%KEY.length));
+  return btoa(o).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+}
+function decode(str){
+  const b = atob(str.replace(/-/g,"+").replace(/_/g,"/"));
+  let s = ""; for (let i=0;i<b.length;i++) s += String.fromCharCode(b.charCodeAt(i) ^ KEY.charCodeAt(i%KEY.length));
+  return JSON.parse(decodeURIComponent(escape(s)));
+}
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+// ---------- Tirage : chacun offre à une seule personne, jamais à soi ni à une exclusion ----------
+function draw(names, exclusions){
+  const forbidden = new Map(names.map(n => [n, new Set([n])]));
+  exclusions.forEach(([a,b]) => { forbidden.get(a)?.add(b); forbidden.get(b)?.add(a); });
+  const shuffle = a => { a = a.slice(); for (let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; };
+  const givers = shuffle(names), used = new Set(), result = {};
+  (function bt(i){
+    if (i === givers.length) return true;
+    const g = givers[i];
+    for (const r of shuffle(names)) {
+      if (used.has(r) || forbidden.get(g).has(r)) continue;
+      used.add(r); result[g] = r;
+      if (bt(i+1)) return true;
+      used.delete(r); delete result[g];
+    }
+    return false;
+  })(0) || (result.__fail = true);
+  return result.__fail ? null : result;
+}
+
+// ---------- Mode révélation ----------
+function renderReveal(data){
+  document.title = "Ton Secret Santa";
+  const app = document.getElementById("app");
+  app.innerHTML = `
+    <div class="card reveal">
+      <div class="gift">🎁</div>
+      <p class="muted">${esc(data.e || "Secret Santa")}</p>
+      <h1>Bonjour ${esc(data.g)} !</h1>
+      <div id="hide">
+        <p class="muted">Assure-toi que personne ne regarde ton écran.</p>
+        <button class="primary" id="btn">Découvrir à qui j'offre</button>
+      </div>
+      <div id="show" class="hidden">
+        <p>Tu offres un cadeau à</p>
+        <div class="big">${esc(data.r)}</div>
+        ${data.b ? `<p>Budget : <strong>${esc(data.b)}</strong></p>` : ""}
+        ${data.d ? `<p>Échange des cadeaux : <strong>${esc(new Date(data.d).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"}))}</strong></p>` : ""}
+        <p class="muted">Chut, c'est un secret 🤫</p>
+      </div>
+    </div>`;
+  document.getElementById("btn").onclick = () => {
+    document.getElementById("hide").classList.add("hidden");
+    document.getElementById("show").classList.remove("hidden");
+  };
+}
+
+// ---------- Mode organisateur ----------
+const state = { event:"", budget:"", date:"", names:[], exclusions:[], links:null, error:"" };
+try { Object.assign(state, JSON.parse(localStorage.getItem("hotte") || "{}"), {error:""}); } catch(e){}
+const save = () => { try { localStorage.setItem("hotte", JSON.stringify(state)); } catch(e){} };
+
+function renderOrganizer(){
+  const app = document.getElementById("app");
+  const opts = state.names.map(n => `<option>${esc(n)}</option>`).join("");
+  app.innerHTML = `
+    <h1>Hotte <span>Surprise</span></h1>
+    <p class="sub">Organise ton Secret Santa en deux minutes. Personne, pas même toi, ne voit le résultat du tirage.</p>
+
+    <div class="card">
+      <h2>1. L'événement</h2>
+      <label>Nom</label><input id="event" placeholder="Noël en famille 2026" value="${esc(state.event)}">
+      <div class="row">
+        <div><label>Budget</label><input id="budget" placeholder="30 €" value="${esc(state.budget)}"></div>
+        <div><label>Date de l'échange</label><input id="date" type="date" value="${esc(state.date)}"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>2. Les participants (${state.names.length})</h2>
+      <form class="row" id="addForm"><input id="name" placeholder="Prénom" autocomplete="off"><button class="primary">Ajouter</button></form>
+      <ul class="list">${state.names.map((n,i)=>`<li>${esc(n)}<button class="x" data-del="${i}" aria-label="Retirer">✕</button></li>`).join("")}</ul>
+    </div>
+
+    <div class="card">
+      <h2>3. Exclusions <span class="muted">(facultatif)</span></h2>
+      <p class="muted" style="margin:0">Pour éviter que deux personnes se tirent entre elles, par exemple un couple.</p>
+      <div class="row" style="margin-top:10px"><select id="exA">${opts}</select><select id="exB">${opts}</select><button id="addEx">Ajouter</button></div>
+      <ul class="list">${state.exclusions.map(([a,b],i)=>`<li>${esc(a)} ↔ ${esc(b)}<button class="x" data-delex="${i}" aria-label="Retirer">✕</button></li>`).join("")}</ul>
+    </div>
+
+    <button class="primary" id="go" style="width:100%;padding:14px" ${state.names.length<3?"disabled":""}>🎲 Lancer le tirage</button>
+    ${state.names.length<3?`<p class="muted" style="text-align:center">Il faut au moins 3 participants.</p>`:""}
+    ${state.error?`<p class="err">${esc(state.error)}</p>`:""}
+
+    ${state.links ? `
+    <div class="card" style="margin-top:16px">
+      <h2>4. Envoie à chacun son lien</h2>
+      <p class="muted" style="margin-top:0">Chaque lien ne révèle que la personne tirée par son destinataire. N'ouvre pas ceux des autres !</p>
+      <ul class="list">${state.links.map(l=>`
+        <li><strong style="flex:0 0 auto">${esc(l.name)}</strong>
+          <div class="link"><code>${esc(l.url)}</code><button data-copy="${esc(l.url)}">Copier</button></div></li>`).join("")}</ul>
+    </div>` : ""}
+  `;
+
+  const bind = (id,key) => document.getElementById(id).oninput = e => { state[key]=e.target.value; state.links=null; save(); };
+  bind("event","event"); bind("budget","budget"); bind("date","date");
+
+  document.getElementById("addForm").onsubmit = e => {
+    e.preventDefault();
+    const v = document.getElementById("name").value.trim();
+    if (!v) return;
+    if (state.names.some(n => n.toLowerCase() === v.toLowerCase())) { state.error = `« ${v} » est déjà dans la liste.`; }
+    else { state.names.push(v); state.error=""; state.links=null; }
+    save(); renderOrganizer(); document.getElementById("name").focus();
+  };
+  app.querySelectorAll("[data-del]").forEach(b => b.onclick = () => {
+    const n = state.names.splice(+b.dataset.del,1)[0];
+    state.exclusions = state.exclusions.filter(p => !p.includes(n));
+    state.links=null; save(); renderOrganizer();
+  });
+  app.querySelectorAll("[data-delex]").forEach(b => b.onclick = () => { state.exclusions.splice(+b.dataset.delex,1); state.links=null; save(); renderOrganizer(); });
+  document.getElementById("addEx").onclick = () => {
+    const a = document.getElementById("exA").value, b = document.getElementById("exB").value;
+    if (!a || a===b) return;
+    if (!state.exclusions.some(([x,y]) => (x===a&&y===b)||(x===b&&y===a))) state.exclusions.push([a,b]);
+    state.links=null; save(); renderOrganizer();
+  };
+  document.getElementById("go").onclick = () => {
+    const res = draw(state.names, state.exclusions);
+    if (!res) { state.error = "Impossible de faire un tirage avec ces exclusions. Retires-en une et réessaie."; state.links=null; save(); return renderOrganizer(); }
+    const base = location.href.split("#")[0];
+    state.error = "";
+    state.links = state.names.map(g => ({ name:g, url: base + "#" + encode({ g, r:res[g], b:state.budget, d:state.date, e:state.event }) }));
+    save(); renderOrganizer();
+  };
+  app.querySelectorAll("[data-copy]").forEach(b => b.onclick = async () => {
+    try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = "Copié ✓"; }
+    catch(e){ prompt("Copie ce lien :", b.dataset.copy); }
+  });
+}
+
+function route(){
+  const h = location.hash.slice(1);
+  if (h) { try { return renderReveal(decode(h)); } catch(e){} }
+  renderOrganizer();
+}
+window.onhashchange = route;
+route();
+</script>
+</body>
+</html>
