@@ -307,7 +307,7 @@ async function renderAdmin(id, token, data){
       ${data.participants.length ? "" : `<p class="muted">Personne pour l'instant. Les inscriptions apparaîtront ici.</p>`}
       ${open ? `<form class="row" id="addName" style="margin-top:6px"><input id="addNameInput" placeholder="Inscrire quelqu'un sans email (prénom)" autocomplete="off"><button>Inscrire</button></form>
       <p class="muted" style="margin:6px 0 0">Tu recevras son code secret par email, à lui transmettre.</p>` : ""}
-      <ul class="list">${data.participants.map(p => `<li><span class="pname">${esc(p.name)} <span class="muted">${p.email ? esc(p.email) : "sans email"}</span></span>${open ? `<button class="x" data-del="${esc(p.id)}" aria-label="Retirer ${esc(p.name)}">✕</button>` : (p.email ? `<button class="x" data-resend="${esc(p.id)}">Renvoyer l'email</button>` : `<span class="muted">prénom + code</span>`)}</li>`).join("")}</ul>
+      <ul class="list">${data.participants.map(p => `<li><span class="pname">${esc(p.name)} <span class="muted">${p.email ? esc(p.email) : "sans email"}</span></span>${open ? `<button class="x" data-del="${esc(p.id)}" aria-label="Retirer ${esc(p.name)}">✕</button>` : (p.email ? `<button class="x" data-resend="${esc(p.id)}">Renvoyer l'email</button>` : `<span class="muted">avec son code</span>`)}</li>`).join("")}</ul>
     </div>
 
     ${open ? `
@@ -325,7 +325,7 @@ async function renderAdmin(id, token, data){
       <h2>🎉 Le tirage est fait</h2>
       ${data.verified ? `<p class="ok">✓ Tirage vérifié</p>
       <ul class="checks"><li>Chaque participant offre à une seule personne</li><li>Personne n'est tiré deux fois</li><li>Personne ne s'est tiré soi-même</li><li>Toutes les exclusions sont respectées</li></ul>` : `<p class="err">La vérification du tirage a échoué. Contacte le support.</p>`}
-      ${data.noEmail && data.noEmail.length ? `<p>Sans email : <strong>${esc(data.noEmail.join(", "))}</strong>. Ils découvrent leur tirage sur la page du Secret Santa avec leur prénom et leur code.</p>` : ""}
+      ${data.noEmail && data.noEmail.length ? `<p>Sans email : <strong>${esc(data.noEmail.join(", "))}</strong>. Ils découvrent leur tirage sur la page du Secret Santa avec leur code.</p>` : ""}
       <p>Chacun a reçu son tirage par email${data.sent != null ? ` (${data.sent} email${data.sent>1?"s":""} envoyé${data.sent>1?"s":""})` : ""}. Toi non plus, tu ne peux pas voir les résultats.</p>
       ${data.failed && data.failed.length ? `<p class="err">Échec d'envoi pour : ${esc(data.failed.join(", "))}. Utilise « Renvoyer l'email ».</p>` : ""}
     </div>`}
@@ -393,10 +393,9 @@ async function renderEvent(id, token){
     </div>` : ""}
     <div class="card">
       <h2>🎁 Découvrir mon tirage</h2>
-      <p class="muted" style="margin-top:0">${open ? "Le tirage n'a pas encore eu lieu. Tu recevras un email dès qu'il sera fait." : "Clique sur le lien reçu par email, ou entre ton email (ou ton prénom) et ton code secret."}</p>
+      <p class="muted" style="margin-top:0">${open ? "Le tirage n'a pas encore eu lieu. Tu recevras un email dès qu'il sera fait." : "Clique sur le lien reçu par email, ou entre simplement ton code secret."}</p>
       <form id="find">
-        <div class="row wrap"><input id="femail" placeholder="Ton email ou ton prénom" required autocomplete="email"><input id="fcode" inputmode="numeric" placeholder="Code secret" required autocomplete="off" style="flex:0 1 140px"></div>
-        <button class="primary" style="margin-top:10px">Voir mon tirage</button>
+        <div class="row"><input id="fcode" inputmode="numeric" pattern="[0-9 ]*" placeholder="Ton code secret" required autocomplete="one-time-code" style="font-size:1.3rem;letter-spacing:.3em;text-align:center"><button class="primary">Voir</button></div>
       </form>
     </div>
     <p id="msg" class="hidden"></p>`;
@@ -414,7 +413,7 @@ async function renderEvent(id, token){
   document.getElementById("find").onsubmit = e => {
     e.preventDefault();
     busy(e.target.querySelector("button"), async () => {
-      const r = await api("reveal", { eventId:id, email: document.getElementById("femail").value.trim(), code: document.getElementById("fcode").value.trim() });
+      const r = await api("reveal", { eventId:id, code: document.getElementById("fcode").value.trim() });
       if (r.waiting) throw new Error(`Patience ${r.name}, le tirage n'a pas encore eu lieu !`);
       renderReveal(r);
     });

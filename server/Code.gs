@@ -79,6 +79,23 @@ function mail(to, subject, title, bodyHtml) {
 const button = (url, label) =>
   '<p style="text-align:center;margin:22px 0"><a href="' + url + '" style="background:#c62828;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:bold">' + label + '</a></p>';
 
+// Code secret unique dans le Secret Santa : il suffit à retrouver son tirage
+function uniqueCode(ev) {
+  for (let i = 0; i < 50; i++) {
+    const code = rand(CODE_DIGITS, "0123456789"), h = hash(ev.id + ":" + code);
+    if (!ev.participants.some(x => x.codeHash === h)) return code;
+  }
+  throw new Error("Impossible de générer un code, réessaie.");
+}
+// Anti-devinette : au-delà de 20 codes faux en 15 minutes, on bloque temporairement
+function tooManyFailures(evId, add) {
+  const key = "fail_" + evId, now = Date.now();
+  let list = []; try { list = JSON.parse(props().getProperty(key) || "[]"); } catch (e) {}
+  list = list.filter(t => now - t < 15 * 60 * 1000);
+  if (add) { list.push(now); props().setProperty(key, JSON.stringify(list)); }
+  return list.length >= 20;
+}
+
 // ---------- Tirage ----------
 function draw(ids, exclusions) {
   const forbidden = {};
@@ -151,7 +168,7 @@ const ACTIONS = {
       const again = !!p;
       if (!p && ev.participants.some(x => x.name.toLowerCase() === name.toLowerCase()))
         throw new Error("Ce prénom est déjà inscrit. Ajoute l'initiale de ton nom, par exemple « " + name + " D. ».");
-      const code = rand(CODE_DIGITS, "0123456789");
+      const code = uniqueCode(ev);
       if (!p) { p = { id: rand(8), name, email }; ev.participants.push(p); }
       p.codeHash = hash(ev.id + ":" + code);
       p.token = rand(24);
@@ -160,7 +177,7 @@ const ACTIONS = {
         "<p>Tu es bien inscrit·e au Secret Santa <strong>" + escHtml(ev.name) + "</strong>" +
         (ev.budget ? " (budget : " + escHtml(ev.budget) + ")" : "") + ".</p>" +
         "<p>Ton code secret : <strong style=\"font-size:22px;letter-spacing:4px\">" + code + "</strong></p>" +
-        "<p>Garde ce mail. Quand l'organisateur aura lancé le tirage, tu recevras un autre email. Tu pourras aussi découvrir ton tirage à tout moment sur le site avec ton email et ce code.</p>" +
+        "<p>Garde ce mail. Quand l'organisateur aura lancé le tirage, tu recevras un autre email. Tu pourras aussi découvrir ton tirage à tout moment sur le site avec ce code.</p>" +
         button(SITE + "#e=" + ev.id, "Voir le Secret Santa"));
       return { ok: true, again, name: p.name };
     });
@@ -171,12 +188,13 @@ const ACTIONS = {
     let p;
     if (req.token) p = ev.participants.find(x => x.token && x.token === req.token);
     else {
-      // Identifiant : l'email, ou le prénom pour les personnes inscrites sans email par l'organisateur
-      const ident = clean(req.email, 120).toLowerCase(), code = clean(req.code, 12).replace(/\D/g, "");
-      const h = hash(ev.id + ":" + code);
-      p = ev.participants.find(x => x.codeHash === h && ((x.email && x.email === ident) || x.name.toLowerCase() === ident));
+      // Le code secret seul suffit (il est unique dans ce Secret Santa)
+      if (tooManyFailures(ev.id, false)) throw new Error("Trop d'essais. Réessaie dans 15 minutes.");
+      const code = clean(req.code, 12).replace(/\D/g, ""), h = hash(ev.id + ":" + code);
+      p = ev.participants.find(x => x.codeHash === h);
+      if (!p) { tooManyFailures(ev.id, true); throw new Error("Code secret incorrect."); }
     }
-    if (!p) throw new Error("Email (ou prénom) ou code incorrect.");
+    if (!p) throw new Error("Ce lien n'est plus valable. Utilise ton code secret.");
     if (ev.status !== "drawn") return { waiting: true, name: p.name, event: publicEvent(ev) };
     const r = ev.participants.find(x => x.id === ev.assign[p.id]);
     return { g: p.name, r: r.name, b: ev.budget, d: ev.date, e: ev.name };
@@ -194,14 +212,14 @@ const ACTIONS = {
       if (ev.participants.length >= MAX_PARTICIPANTS) throw new Error("Le nombre maximum de participants est atteint.");
       if (ev.participants.some(x => x.name.toLowerCase() === name.toLowerCase()))
         throw new Error("« " + name + " » est déjà inscrit. Ajoute l'initiale du nom, par exemple « " + name + " D. ».");
-      const code = rand(CODE_DIGITS, "0123456789");
+      const code = uniqueCode(ev);
       const p = { id: rand(8), name, email: "", codeHash: hash(ev.id + ":" + code), token: rand(24), byOrg: true };
       ev.participants.push(p);
       store(ev);
       mail(ev.orgEmail, "Tu as inscrit " + name + " au Secret Santa « " + ev.name + " »", "Inscription de " + escHtml(name),
         "<p>Tu as bien inscrit <strong>" + escHtml(name) + "</strong> au Secret Santa <strong>" + escHtml(ev.name) + "</strong>.</p>" +
         "<p>Voici son code secret, qui lui servira à découvrir son tirage : <strong style=\"font-size:22px;letter-spacing:4px\">" + code + "</strong></p>" +
-        "<p>Transmets-le-lui avec ce lien. Après le tirage, il ou elle entrera son prénom (<strong>" + escHtml(name) + "</strong>) et ce code :<br>" +
+        "<p>Transmets-le-lui avec ce lien. Après le tirage, il ou elle n'aura qu'à entrer ce code sur cette page :<br>" +
         "<a href=\"" + SITE + "#e=" + ev.id + "\">" + SITE + "#e=" + ev.id + "</a></p>" +
         "<p style=\"color:#7a6f69;font-size:13px\">Pour garder la surprise, évite de l'utiliser toi-même 😉</p>");
       return adminView(ev);
@@ -241,7 +259,7 @@ const ACTIONS = {
           mail(p.email, "🎁 Ton tirage du Secret Santa « " + ev.name + " »", "Le tirage est fait, " + escHtml(p.name) + " !",
             "<p>Clique sur le bouton pour découvrir à qui tu offres un cadeau. Vérifie que personne ne regarde ton écran 🤫</p>" +
             button(SITE + "#e=" + ev.id + "&t=" + p.token, "Découvrir mon tirage") +
-            "<p style=\"color:#7a6f69;font-size:13px\">Tu peux aussi aller sur " + SITE + "#e=" + ev.id + " et entrer ton email avec le code secret reçu à l'inscription.</p>");
+            "<p style=\"color:#7a6f69;font-size:13px\">Tu peux aussi aller sur " + SITE + "#e=" + ev.id + " et entrer le code secret reçu à l'inscription.</p>");
           sent++;
         } catch (err) { failed.push(p.name); }
       });
@@ -249,7 +267,7 @@ const ACTIONS = {
         try {
           mail(ev.orgEmail, "Tirage fait : à transmettre à " + noEmail.join(", "), "Le tirage est fait !",
             "<p>Ces personnes n'ont pas d'email : <strong>" + escHtml(noEmail.join(", ")) + "</strong>.</p>" +
-            "<p>Préviens-les qu'elles peuvent découvrir leur tirage sur le site avec <strong>leur prénom et le code secret</strong> que tu as reçu lors de leur inscription :</p>" +
+            "<p>Préviens-les qu'elles peuvent découvrir leur tirage sur le site avec <strong>le code secret</strong> que tu as reçu lors de leur inscription :</p>" +
             button(SITE + "#e=" + ev.id, "Page du Secret Santa"));
         } catch (err) {}
       }
@@ -262,7 +280,7 @@ const ACTIONS = {
     if (ev.status !== "drawn") throw new Error("Le tirage n'a pas encore eu lieu.");
     const p = ev.participants.find(x => x.id === req.participantId);
     if (!p) throw new Error("Participant introuvable.");
-    if (!p.email) throw new Error(p.name + " n'a pas d'email : il découvre son tirage sur le site avec son prénom et son code.");
+    if (!p.email) throw new Error(p.name + " n'a pas d'email : il découvre son tirage sur le site avec son code.");
     mail(p.email, "🎁 Ton tirage du Secret Santa « " + ev.name + " »", "Rappel, " + escHtml(p.name) + " !",
       "<p>Voici à nouveau ton lien pour découvrir ton tirage.</p>" + button(SITE + "#e=" + ev.id + "&t=" + p.token, "Découvrir mon tirage"));
     return { ok: true };
