@@ -84,7 +84,7 @@ function googleEmail(idToken) {
 function isOwner(ev, email) { return !!email && (ev.owner ? ev.owner === email : normEmail(ev.orgEmail) === email); }
 
 // ---------- Listes d'envies (une propriété par participant, hors de l'événement pour ne pas dépasser 9 Ko) ----------
-const MAX_WISH = 400;
+const MAX_WISH = 1500;
 const wishKey = (evId, pid) => "wish_" + evId + "_" + pid;
 function getWish(evId, pid) { return props().getProperty(wishKey(evId, pid)) || ""; }
 function setWish(evId, pid, text) {
@@ -92,9 +92,41 @@ function setWish(evId, pid, text) {
   if (w) props().setProperty(wishKey(evId, pid), w); else props().deleteProperty(wishKey(evId, pid));
   return w;
 }
+// Aperçu d'un lien (titre + image) : lit la page produit (Amazon ou autre) côté serveur
+const URL_RE = /https?:\/\/[^\s<>"']+/g;
+const IMG_RE = /\.(jpe?g|png|webp|gif)(\?|$)|m\.media-amazon\.com\/images\//i;
+function decodeEntities(t) { return String(t || "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;|&#x27;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\s+/g, " ").trim(); }
+function linkPreview(url) {
+  if (IMG_RE.test(url)) return { i: url };
+  try {
+    const res = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true, headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+      "Accept-Language": "fr-FR,fr;q=0.9" } });
+    if (res.getResponseCode() >= 400) return {};
+    const h = res.getContentText().slice(0, 900000);
+    const pick = (...list) => { for (const r of list) { const m = h.match(r); if (m && m[1]) return decodeEntities(m[1]); } return ""; };
+    const t = pick(/id="productTitle"[^>]*>([^<]+)</, /property="og:title"\s+content="([^"]+)"/, /content="([^"]+)"\s+property="og:title"/, /<title[^>]*>([^<]+)</);
+    let i = pick(/data-old-hires="(https:[^"]+)"/, /"hiRes":"(https:[^"]+)"/, /"large":"(https:[^"]+)"/, /property="og:image"\s+content="([^"]+)"/, /content="([^"]+)"\s+property="og:image"/, /id="landingImage"[^>]*src="(https:[^"]+)"/);
+    if (!i) { const m = h.match(/data-a-dynamic-image="\{&quot;(https:[^&]+)&quot;/); if (m) i = m[1]; }
+    const bad = /robot|captcha/i.test(t);
+    return { t: bad ? "" : t.slice(0, 120), i: /^https:\/\//.test(i) ? i : "" };
+  } catch (e) { return {}; }
+}
+// Calcule et garde les aperçus des liens d'une liste d'envies
+function updatePreviews(evId, pid, wish) {
+  const key = "pv_" + evId + "_" + pid, old = JSON.parse(props().getProperty(key) || "{}"), out = {};
+  (String(wish).match(URL_RE) || []).slice(0, 10).forEach(u => { out[u] = old[u] && (old[u].i || old[u].t) ? old[u] : linkPreview(u); });
+  const json = JSON.stringify(out);
+  if (Object.keys(out).length && json.length < 8500) props().setProperty(key, json); else props().deleteProperty(key);
+  return out;
+}
+const getPreviews = (evId, pid) => JSON.parse(props().getProperty("pv_" + evId + "_" + pid) || "{}");
+// Test manuel depuis l'éditeur
+function testerApercu() { Logger.log(JSON.stringify(linkPreview("https://www.amazon.fr/dp/2070584623"))); }
+
 function deleteEventData(evId) {
   const all = props().getProperties();
-  Object.keys(all).forEach(k => { if (k.indexOf("wish_" + evId + "_") === 0) props().deleteProperty(k); });
+  Object.keys(all).forEach(k => { if (k.indexOf("wish_" + evId + "_") === 0 || k.indexOf("pv_" + evId + "_") === 0) props().deleteProperty(k); });
   props().deleteProperty("ev_" + evId);
   props().deleteProperty("fail_" + evId);
 }

@@ -109,7 +109,11 @@ textarea{width:100%;box-sizing:border-box;padding:12px 14px;border:2px solid var
 textarea:focus{outline:none;border-color:var(--green)}
 .wish{margin:14px 0 4px;padding:12px 14px;border-radius:14px;background:var(--soft);text-align:left;border-left:5px solid var(--green)}
 .wish-title{margin:0 0 6px;font-weight:800}
-.wish-text{margin:0;white-space:pre-wrap;word-break:break-word}
+.wishlist{list-style:none;margin:0;padding:0}
+.wishlist li{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:7px 0;border-top:1px dashed var(--line);word-break:break-word}
+.wishlist li:first-child{border-top:0;padding-top:0}
+.wishlist li span:before{content:"🎀 "}
+.card a.wlink{display:inline-block;padding:4px 10px;border-radius:99px;background:#ff9900;color:#111;font-weight:700;font-size:.85rem;text-decoration:none}
 .wish-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:10px}
 .wishbox h2{font-size:1.1rem}
 .ideas{margin:10px 0 4px;text-align:left}
@@ -170,12 +174,30 @@ setInterval(tickCountdowns, 1000);
 new MutationObserver(() => { if (document.querySelector(".countdown:empty")) tickCountdowns(); }).observe(document.documentElement, { childList: true, subtree: true });
 
 // ---------- Ma liste d'envies (modifiable avec le lien perso ou le code secret) ----------
-const MAX_WISH = 400;
+const MAX_WISH = 1500;
+// Liens : on raccourcit les liens Amazon (https://www.amazon.fr/dp/ASIN) pour tenir dans la liste
+function shortUrl(u){
+  const m = u.match(/^https?:\/\/(?:www\.)?amazon\.([a-z.]+)\/(?:[^?#]*\/)?(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})/i);
+  return m ? `https://www.amazon.${m[1]}/dp/${m[2].toUpperCase()}` : u;
+}
+const cleanWish = t => String(t || "").replace(/https?:\/\/[^\s<>"']+/g, shortUrl);
+// Une ligne = une envie : texte libre + éventuel(s) lien(s)
+function wishItems(w){
+  return String(w || "").split(/\n+/).map(line => {
+    const urls = (line.match(/https?:\/\/[^\s<>"']+/g) || []);
+    const label = urls.reduce((t, u) => t.replace(u, ""), line).replace(/[\s:–—-]+$/, "").replace(/^[\s•*-]+/, "").trim();
+    return { label, urls };
+  }).filter(i => i.label || i.urls.length);
+}
+function linkLabel(u){ try { const h = new URL(u).hostname.replace(/^www\./, ""); return /amazon\.|amzn\./.test(h) ? "🛒 Voir sur Amazon" : "🔗 " + h; } catch(e){ return "🔗 Lien"; } }
+function wishHtml(w){
+  return `<ul class="wishlist">${wishItems(w).map(i => `<li>${i.label ? `<span>${esc(i.label)}</span>` : ""}${i.urls.map(u => `<a class="wlink" target="_blank" rel="noopener nofollow" href="${esc(u)}">${esc(linkLabel(u))}</a>`).join("")}</li>`).join("")}</ul>`;
+}
 function wishCard(mw){
   return `<div class="card">
     <h2>✏️ Ma liste d'envies</h2>
-    <p class="muted" style="margin-top:0">Visible uniquement par la personne qui t'a tiré au sort. Idées, tailles, ce que tu n'aimes pas…</p>
-    <textarea id="wishText" maxlength="${MAX_WISH}" rows="4" placeholder="Ex. : un livre de cuisine, des chaussettes rigolotes (pointure 42), pas de chocolat">${esc(mw || "")}</textarea>
+    <p class="muted" style="margin-top:0">Une envie par ligne. Tu peux coller un <strong>lien Amazon</strong> (ou d'un autre site) après le nom. Visible uniquement par la personne qui t'a tiré au sort.</p>
+    <textarea id="wishText" maxlength="${MAX_WISH}" rows="5" placeholder="Casque audio https://www.amazon.fr/dp/…&#10;Livre de cuisine italienne&#10;Pas de chocolat 🙏">${esc(mw || "")}</textarea>
     <div class="wish-foot"><span class="muted" id="wishCount"></span><button class="primary" id="wishSave">Enregistrer</button></div>
     <p id="wishMsg" class="ok hidden"></p>
   </div>`;
@@ -187,7 +209,7 @@ function bindWish(auth){
   const btn = document.getElementById("wishSave");
   btn.onclick = () => busy(btn, async () => {
     const m = document.getElementById("wishMsg"); m.classList.add("hidden");
-    const r = await api("updateWish", Object.assign({ wish: t.value }, auth));
+    const r = await api("updateWish", Object.assign({ wish: cleanWish(t.value) }, auth));
     t.value = r.mw; count(); m.textContent = r.mw ? "✓ Liste d'envies enregistrée" : "✓ Liste d'envies effacée"; m.classList.remove("hidden");
   });
 }
@@ -197,7 +219,7 @@ function budgetMax(b){ const m = String(b || "").replace(",", ".").match(/\d+(\.
 function amazonUrl(q, max){ return "https://www.amazon.fr/s?k=" + encodeURIComponent(q) + (max ? "&rh=p_36%3A-" + Math.round(max * 100) : ""); }
 function amazonIdeas(wish, budget){
   const max = budgetMax(budget);
-  const fromWish = String(wish || "").split(/[\n,;•]+/).map(x => x.replace(/\(.*?\)/g, "").replace(/^[-*\s]+/, "").trim()).filter(x => x.length >= 3 && x.length <= 60 && !/^pas\b|^aucun|^sauf\b/i.test(x)).slice(0, 4);
+  const fromWish = wishItems(wish).filter(i => !i.urls.length).flatMap(i => i.label.split(/[,;]+/)).map(x => x.replace(/\(.*?\)/g, "").trim()).filter(x => x.length >= 3 && x.length <= 60 && !/^pas\b|^aucun|^sauf\b/i.test(x)).slice(0, 4);
   const generic = ["idée cadeau secret santa", "jeu de société", "mug rigolo", "bougie parfumée", "chaussettes de Noël", "gadget insolite"];
   const chips = fromWish.map(q => [q, "⭐"]).concat(generic.slice(0, 6 - Math.min(fromWish.length, 3)).map(q => [q, ""]));
   return `<div class="ideas">
@@ -231,7 +253,7 @@ function renderReveal(data, auth){
         ${data.d ? `<p>📅 Échange des cadeaux : <strong>${esc(new Date(data.d).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"}))}</strong></p>` : ""}
         <div class="wish">
           <p class="wish-title">🎁 Sa liste d'envies</p>
-          ${data.w ? `<p class="wish-text">${esc(data.w)}</p>` : `<p class="muted" style="margin:0">${esc(data.r)} n'a pas encore écrit de liste d'envies. Reviens plus tard, elle peut l'ajouter à tout moment.</p>`}
+          ${data.w ? wishHtml(data.w) : `<p class="muted" style="margin:0">${esc(data.r)} n'a pas encore écrit de liste d'envies. Reviens plus tard, elle peut l'ajouter à tout moment.</p>`}
         </div>
         ${amazonIdeas(data.w, data.b)}
         ${countdown(data.d)}
@@ -568,8 +590,8 @@ async function renderEvent(id, token){
         <label>Ton prénom</label><input id="jname" required autocomplete="given-name">
         <label>Ton email</label><input id="jemail" type="email" required autocomplete="email">
         <label>Ma liste d'envies <span class="muted" style="font-weight:400">(facultatif, modifiable plus tard)</span></label>
-        <textarea id="jwish" maxlength="${MAX_WISH}" rows="3" placeholder="Idées de cadeaux, tailles, ce que tu n'aimes pas…"></textarea>
-        <p class="muted" style="margin:4px 0 0;font-size:.85rem">Seule la personne qui te tirera au sort la verra.</p>
+        <textarea id="jwish" maxlength="${MAX_WISH}" rows="4" placeholder="Une envie par ligne, avec un lien Amazon si tu veux :&#10;Casque audio https://www.amazon.fr/dp/…&#10;Livre de cuisine italienne"></textarea>
+        <p class="muted" style="margin:4px 0 0;font-size:.85rem">Colle des liens Amazon ou d'autres sites. Seule la personne qui te tirera au sort la verra.</p>
         <button class="primary big" style="margin-top:16px">Je participe</button>
       </form>
       <div id="joined" class="hidden"></div>
@@ -587,7 +609,7 @@ async function renderEvent(id, token){
   if (join) join.onsubmit = e => {
     e.preventDefault();
     busy(join.querySelector("button"), async () => {
-      const r = await api("register", { eventId:id, name: document.getElementById("jname").value.trim(), email: document.getElementById("jemail").value.trim(), wish: document.getElementById("jwish").value });
+      const r = await api("register", { eventId:id, name: document.getElementById("jname").value.trim(), email: document.getElementById("jemail").value.trim(), wish: cleanWish(document.getElementById("jwish").value) });
       join.classList.add("hidden");
       const j = document.getElementById("joined");
       j.innerHTML = `<p class="ok">✓ ${r.again ? "Te revoilà" : "C'est noté"}, ${esc(r.name)} !</p><p>Ton code secret vient de t'être envoyé par email${r.again ? " (c'est un nouveau code, l'ancien ne marche plus)" : ""}. Regarde aussi dans tes spams. Garde-le précieusement jusqu'au tirage.</p>`;
