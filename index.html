@@ -315,8 +315,9 @@ function amazonUrl(q, max){ return affiliate("https://www.amazon.fr/s?k=" + enco
 function amazonIdeas(wish, budget){
   const max = budgetMax(budget);
   const fromWish = wishItems(wish).filter(i => !i.urls.length).flatMap(i => i.label.split(/[,;]+/)).map(x => x.replace(/\(.*?\)/g, "").trim()).filter(x => x.length >= 3 && x.length <= 60 && !/^pas\b|^aucun|^sauf\b/i.test(x)).slice(0, 4);
-  const generic = ["idée cadeau secret santa", "jeu de société", "mug rigolo", "bougie parfumée", "chaussettes de Noël", "gadget insolite"];
-  const chips = fromWish.map(q => [q, "⭐"]).concat(generic.filter(g => !fromWish.some(w => w.toLowerCase().includes(g.split(" ")[0].toLowerCase()))).slice(0, 6 - Math.min(fromWish.length, 3)).map(q => [q, ""]));
+  // Idées générales classées par commission Amazon Partenaires (mode, bijoux, beauté et maison d'abord, high-tech et jeux en dernier)
+  const generic = ["coffret beauté", "bijou fantaisie", "écharpe ou bonnet", "bougie parfumée", "plaid tout doux", "chaussettes de Noël", "mug rigolo", "jeu de société"];
+  const chips = fromWish.map(q => [q, "⭐"]).concat(generic.filter(g => !fromWish.some(w => w.toLowerCase().includes(g.split(" ")[0].toLowerCase()))).slice(0, 7 - Math.min(fromWish.length, 3)).map(q => [q, ""]));
   return `<div class="ideas">
     <p class="wish-title">💡 Idées sur Amazon${max ? ` jusqu'à ${max} €` : ""}</p>
     <div class="chips">${chips.map(([q, star]) => `<a class="chip" target="_blank" rel="noopener" href="${esc(amazonUrl(q, max))}">${star ? star + " " : ""}${esc(q)}</a>`).join("")}</div>
