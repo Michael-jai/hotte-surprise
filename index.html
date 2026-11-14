@@ -449,7 +449,7 @@ function intl(phone){
 function sendButtons(text, copyValue){
   const msg = encodeURIComponent(text);
   return `<div class="actions">
-    <a class="btn sms" href="sms:?&body=${msg}">💬 SMS</a>
+    <a class="btn sms" href="sms:${/iPhone|iPad|iPod/i.test(navigator.userAgent) ? "&" : "?"}body=${msg}">💬 SMS</a>
     <a class="btn wa" target="_blank" rel="noopener" href="https://wa.me/?text=${msg}">🟢 WhatsApp</a>
     <button data-copy="${esc(copyValue ?? text)}">🔗 Copier</button>
   </div>`;

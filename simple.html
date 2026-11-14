@@ -272,7 +272,7 @@ function renderOrganizer(){
       <ul class="list">${state.links.map(l=>{ const tel = state.phones[l.name]||"", msg = encodeURIComponent(message(l.name, l.url)); return `
         <li class="send"><div><strong>${esc(l.name)}</strong> <span class="muted">${tel?esc(tel):"pas de numéro"}</span></div>
           <div class="actions">
-            <a class="btn sms" href="sms:${esc(tel.replace(/[^\d+]/g,""))}?&body=${msg}">💬 SMS</a>
+            <a class="btn sms" href="sms:${esc(tel.replace(/[^\d+]/g,""))}${/iPhone|iPad|iPod/i.test(navigator.userAgent) ? "&" : "?"}body=${msg}">💬 SMS</a>
             <a class="btn wa" target="_blank" rel="noopener" href="https://wa.me/${esc(intl(tel))}?text=${msg}">🟢 WhatsApp</a>
             <button data-copy="${esc(l.url)}">🔗 Copier</button>
           </div></li>`}).join("")}</ul>
