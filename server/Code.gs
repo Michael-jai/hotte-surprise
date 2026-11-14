@@ -325,8 +325,8 @@ const ACTIONS = {
 
   reveal(req) {
     const ev = load(req.eventId);
-    // Le code secret seul suffit (il est unique dans ce Secret Santa)
-    const p = findParticipant(ev, req);
+    // Le code secret seul suffit (il est unique dans ce Secret Santa) ; connecté avec Google, l'email de l'inscription suffit
+    const p = findParticipant(ev, req, true);
     if (ev.status !== "drawn") return { waiting: true, name: p.name, event: publicEvent(ev), mw: getWish(ev.id, p.id) };
     if (req.peek) return { drawn: true };  // simple vérification du lien, sans afficher ni marquer le tirage comme vu
     const r = ev.participants.find(x => x.id === ev.assign[p.id]);

@@ -558,7 +558,7 @@ async function refreshWishes(g){
   let list;
   try { list = (await api("myWishes", { idToken: g.token })).list; } catch(e){ box.innerHTML = ""; codeBox.classList.remove("hidden"); return; }
   if (!list.length) { box.innerHTML = `<p class="muted" style="margin-top:0">Aucune inscription trouvée avec ${esc(g.email)}.</p>`; codeBox.classList.remove("hidden"); return; }
-  box.innerHTML = `<ul class="list" style="margin-top:0">${list.map((x, i) => `<li><span class="pname">${esc(x.event)} <span class="muted">${esc(x.name)}</span></span><button class="primary" data-mw="${i}">✏️ Modifier ma liste</button></li><li class="wishrow hidden" id="mwRow${i}"></li>`).join("")}</ul>
+  box.innerHTML = `<ul class="list" style="margin-top:0">${list.map((x, i) => `<li><span class="pname">${esc(x.event)} <span class="muted">${esc(x.name)}</span></span>${x.drawn ? `<a class="x" href="#e=${esc(x.eventId)}" style="margin-right:6px">🎁 Mon tirage</a>` : ""}<button class="primary" data-mw="${i}">✏️ Modifier ma liste</button></li><li class="wishrow hidden" id="mwRow${i}"></li>`).join("")}</ul>
     <p class="muted" style="margin:8px 0 0;font-size:.85rem">Inscrit avec un autre email ? <a href="#" id="showCode">Entre ton code</a></p>`;
   document.getElementById("showCode").onclick = e => { e.preventDefault(); codeBox.classList.remove("hidden"); e.target.parentNode.remove(); };
   const open = i => {
@@ -707,11 +707,13 @@ async function renderEvent(id, token){
   setTimeout(() => document.body.classList.add("ready"), 600);
   loading();
   if (token) rememberMe(id, token);
-  const saved = !token && myLinks()[id];
-  if (saved) {
-    // Avant le tirage on rouvre directement sa liste ; après, on attend qu'il clique (le tirage s'affiche alors comme vu)
-    try { const r = await api("reveal", { eventId:id, token: saved, peek: true }); if (r.waiting) { token = saved; var waitingWish = r; } else var savedDrawn = true; }
-    catch(e){ rememberMe(id, null); }
+  // Reconnu sans code : lien perso gardé dans ce navigateur, ou compte Google avec l'email de l'inscription
+  const saved = !token && myLinks()[id], gs = !token && !saved && GOOGLE_CLIENT_ID ? googleSession() : null;
+  const autoAuth = saved ? { eventId:id, token: saved } : gs ? { eventId:id, idToken: gs.token } : null;
+  if (autoAuth) {
+    // Avant le tirage on rouvre directement sa liste ; après, on propose d'ouvrir le cadeau (le tirage s'affiche alors comme vu)
+    try { const r = await api("reveal", Object.assign({ peek: true }, autoAuth)); if (r.waiting) var waitingWish = r, waitAuth = autoAuth; else var savedDrawn = true; }
+    catch(e){ if (saved) rememberMe(id, null); }
   }
   if (token && !waitingWish) {
     try {
@@ -786,12 +788,12 @@ async function renderEvent(id, token){
       renderReveal(r, { eventId:id, code });
     });
   };
-  if (waitingWish) showWaitWish(waitingWish, { eventId:id, token });
+  if (waitingWish) showWaitWish(waitingWish, waitAuth || { eventId:id, token });
   if (pendingCode && !waitingWish) { document.getElementById("fcode").value = pendingCode; document.getElementById("find").requestSubmit(); }
   pendingCode = "";
   if (savedDrawn && !document.getElementById("find").classList.contains("hidden")) {
-    document.getElementById("waitWish").innerHTML = `<button class="primary big" id="seeMine">🎁 Voir mon tirage et ma liste</button><p class="muted" style="text-align:center">ou entre un code secret :</p>`;
-    document.getElementById("seeMine").onclick = e => busy(e.currentTarget, async () => renderReveal(await api("reveal", { eventId:id, token: saved }), { eventId:id, token: saved }));
+    document.getElementById("waitWish").innerHTML = `<button class="primary big" id="seeMine">🎁 Ouvrir mon cadeau</button><p class="muted" style="text-align:center">ou entre un code secret :</p>`;
+    document.getElementById("seeMine").onclick = e => busy(e.currentTarget, async () => renderReveal(await api("reveal", autoAuth), autoAuth));
   }
 }
 // Avant le tirage : la personne identifiée peut écrire ou modifier sa liste d'envies
