@@ -123,6 +123,8 @@ textarea:focus{outline:none;border-color:var(--green)}
 .wline{display:flex;align-items:center;gap:8px}
 .addwish{margin-top:8px}.addwish summary{cursor:pointer;color:var(--muted);font-size:.9rem;padding:4px 0}.addwish .wlines{margin-top:6px}
 ul.list li.wishrow{display:block}
+.aff{max-width:640px;margin:10px auto 28px;padding:0 16px;text-align:center;font-size:.72rem;color:rgba(255,255,255,.6)}.aff a{color:inherit}
+.asearch{display:flex;gap:6px;margin:0 0 8px}.asearch input{flex:1;min-width:0;padding:8px 12px;font-size:.92rem}.asearch button{flex:0 0 auto;white-space:nowrap;padding:8px 12px;font-size:.88rem}
 .wthumb{flex:0 0 40px;height:40px;border-radius:10px;background:var(--soft);display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:1.1rem}
 .wthumb img{max-width:100%;max-height:100%;object-fit:contain;background:#fff}
 .wline .winput{flex:1;min-width:0;padding:9px 12px}
@@ -162,6 +164,7 @@ ul.list li.mine a span:first-child{text-decoration:underline}
 <div id="snow" aria-hidden="true"></div>
 <a id="homeBtn" class="home-btn hidden" href="#">🏠 Accueil</a>
 <main id="app"></main>
+<footer class="aff">En tant que Partenaire Amazon, Hotte Surprise réalise un bénéfice sur les achats remplissant les conditions requises. · <a href="confidentialite.html">Confidentialité</a></footer>
 <script>
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
@@ -212,6 +215,11 @@ function wishItems(w){
     return { label, urls };
   }).filter(i => i.label || i.urls.length);
 }
+// Programme Partenaires Amazon : identifiant ajouté aux liens Amazon au moment de l'affichage (pas dans les listes enregistrées)
+const AMAZON_TAG = "hottesurprise-21";
+function affiliate(u){
+  try { const x = new URL(shortUrl(u)); if (!/(^|\.)amazon\.[a-z.]+$/i.test(x.hostname)) return u; x.searchParams.set("tag", AMAZON_TAG); return x.toString(); } catch(e){ return u; }
+}
 function linkLabel(u){ try { const h = new URL(u).hostname.replace(/^www\./, ""); return /amazon\.|amzn\./.test(h) ? "🛒 Voir sur Amazon" : "🔗 " + h; } catch(e){ return "🔗 Lien"; } }
 // Image d'un lien : photo du produit Amazon (via son code ASIN) ou lien direct vers une image
 function linkImage(u){
@@ -225,16 +233,21 @@ function wishHtml(w){
   if (shorts.length) expandShort(shorts, () => document.querySelectorAll("ul.wishlist[data-w]").forEach(ul => { ul.outerHTML = wishHtml(ul.dataset.w); }));
   return `<ul class="wishlist" data-w="${esc(w)}">${wishItems(w).map(i => {
     const img = i.urls.map(linkImage).find(Boolean), links = i.urls.filter(u => !/\.(jpe?g|png|webp|gif)(\?|$)/i.test(u));
-    return `<li>${img ? `<a class="wimg" target="_blank" rel="noopener nofollow" href="${esc(links[0] || img)}"><img src="${esc(img)}" alt="" loading="lazy" referrerpolicy="no-referrer" onload="if(this.naturalWidth<5)this.parentNode.remove()" onerror="this.parentNode.remove()"></a>` : ""}
-      <div class="wbody">${i.label ? `<span>${esc(i.label)}</span>` : ""}${links.map(u => `<a class="wlink" target="_blank" rel="noopener nofollow" href="${esc(u)}">${esc(linkLabel(u))}</a>`).join("")}</div></li>`;
+    return `<li>${img ? `<a class="wimg" target="_blank" rel="noopener nofollow" href="${esc(affiliate(links[0] || img))}"><img src="${esc(img)}" alt="" loading="lazy" referrerpolicy="no-referrer" onload="if(this.naturalWidth<5)this.parentNode.remove()" onerror="this.parentNode.remove()"></a>` : ""}
+      <div class="wbody">${i.label ? `<span>${esc(i.label)}</span>` : ""}${links.map(u => `<a class="wlink" target="_blank" rel="noopener nofollow" href="${esc(affiliate(u))}">${esc(linkLabel(u))}</a>`).join("")}</div></li>`;
   }).join("")}</ul>`;
 }
+// Recherche Amazon depuis l'éditeur : ouvre les résultats dans un nouvel onglet, on revient coller le lien
+function amazonSearch(input){ const q = input.value.trim(); if (q) window.open(amazonUrl(q), "_blank", "noopener"); }
+document.addEventListener("click", e => { const b = e.target.closest(".ago"); if (b) amazonSearch(b.parentNode.querySelector(".aq")); });
+document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.classList && e.target.classList.contains("aq")) { e.preventDefault(); amazonSearch(e.target); } });
 // Éditeur ligne par ligne : une envie par ligne, une ligne vide apparaît dès qu'on remplit la dernière
 const MAX_WISH_LINES = 15;
 function wishEditor(id, text){
   const lines = String(text || "").split(/\n+/).map(x => x.trim()).filter(Boolean);
-  return `<div class="wlines" id="${id}">${lines.concat([""]).map(wishLine).join("")}</div>
-    <p class="muted" style="margin:6px 0 0;font-size:.82rem">Écris une idée, ou colle un <strong>lien Amazon</strong> (la photo s'affiche). Autre site : ajoute aussi le lien d'une image.</p>`;
+  return `<div class="asearch"><input class="aq" placeholder="Chercher un produit sur Amazon…" autocomplete="off" enterkeyhint="search"><button type="button" class="ago">🔍 Chercher</button></div>
+    <div class="wlines" id="${id}">${lines.concat([""]).map(wishLine).join("")}</div>
+    <p class="muted" style="margin:6px 0 0;font-size:.82rem">Écris une idée, ou cherche sur Amazon et colle le <strong>lien du produit</strong> (la photo s'affiche). Autre site : ajoute aussi le lien d'une image.</p>`;
 }
 function wishLine(v){
   return `<div class="wline"><span class="wthumb"></span><input class="winput" value="${esc(v)}" maxlength="300" placeholder="Ex. : casque audio, ou colle un lien Amazon" autocomplete="off"><button type="button" class="wdel" aria-label="Retirer cette envie">✕</button></div>`;
@@ -287,7 +300,7 @@ function bindWish(auth, onSaved){
   btn.onclick = () => busy(btn, async () => {
     const m = document.getElementById("wishMsg"); m.classList.add("hidden");
     const r = await api("updateWish", Object.assign({ wish: get() }, auth));
-    const box = document.getElementById("wishEdit"); box.outerHTML = wishEditor("wishEdit", r.mw).replace(/<p class="muted"[\s\S]*$/, "");
+    const box = document.getElementById("wishEdit"); box.outerHTML = wishEditor("wishEdit", r.mw).replace(/^\s*<div class="asearch">[\s\S]*?<\/div>\s*/, "").replace(/<p class="muted"[\s\S]*$/, "");
     get = bindWishEditor("wishEdit");
     m.textContent = r.mw ? "✓ Liste d'envies enregistrée" : "✓ Liste d'envies effacée"; m.classList.remove("hidden");
     if (onSaved) onSaved(r.mw);
@@ -296,7 +309,7 @@ function bindWish(auth, onSaved){
 
 // ---------- Idées cadeaux : recherches Amazon.fr filtrées au budget ----------
 function budgetMax(b){ const m = String(b || "").replace(",", ".").match(/\d+(\.\d+)?/g); return m ? Math.max(...m.map(Number)) : 0; }
-function amazonUrl(q, max){ return "https://www.amazon.fr/s?k=" + encodeURIComponent(q) + (max ? "&rh=p_36%3A-" + Math.round(max * 100) : ""); }
+function amazonUrl(q, max){ return affiliate("https://www.amazon.fr/s?k=" + encodeURIComponent(q) + (max ? "&rh=p_36%3A-" + Math.round(max * 100) : "")); }
 function amazonIdeas(wish, budget){
   const max = budgetMax(budget);
   const fromWish = wishItems(wish).filter(i => !i.urls.length).flatMap(i => i.label.split(/[,;]+/)).map(x => x.replace(/\(.*?\)/g, "").trim()).filter(x => x.length >= 3 && x.length <= 60 && !/^pas\b|^aucun|^sauf\b/i.test(x)).slice(0, 4);
