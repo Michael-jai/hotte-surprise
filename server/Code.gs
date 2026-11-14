@@ -73,6 +73,13 @@ function publicEvent(ev) {
 // Session du site (30 jours) créée après une connexion Google, pour ne pas devoir se reconnecter à chaque visite
 const SESSION_DAYS = 30;
 const sessKey = t => "sess_" + hash("session:" + t).slice(0, 32);
+const magicKey = t => "magic_" + hash("magic:" + t).slice(0, 32);
+const MAGIC_MINUTES = 15, MAX_MAGIC_PER_HOUR = 5;
+function newSession(email) {
+  const token = "s." + rand(40), exp = Date.now() + SESSION_DAYS * 86400000;
+  props().setProperty(sessKey(token), JSON.stringify({ e: email, x: exp }));
+  return { session: token, email, exp: Math.floor(exp / 1000) };
+}
 function googleEmail(idToken) {
   if (!GOOGLE_CLIENT_ID) throw new Error("La connexion Google n'est pas configurée.");
   if (!idToken) throw new Error("Connecte-toi avec Google.");
@@ -366,9 +373,37 @@ const ACTIONS = {
   // Connexion : vérifie le jeton Google une fois et donne une session de 30 jours
   login(req) {
     if (String(req.idToken || "").indexOf("s.") === 0) throw new Error("Connexion Google invalide. Reconnecte-toi.");
-    const email = googleEmail(req.idToken), token = "s." + rand(40), exp = Date.now() + SESSION_DAYS * 86400000;
-    props().setProperty(sessKey(token), JSON.stringify({ e: email, x: exp }));
-    return { session: token, email, exp: Math.floor(exp / 1000) };
+    return newSession(googleEmail(req.idToken));
+  },
+
+  // Connexion sans Google (iCloud, Hotmail…) : lien magique à usage unique envoyé par email, valable 15 minutes
+  magicLink(req) {
+    const email = normEmail(req.email);
+    if (!isEmail(email)) throw new Error("Adresse email invalide.");
+    return withLock(() => {
+      const now = Date.now(), rk = "mlr_" + hash("ml:" + email).slice(0, 16);
+      let sent = []; try { sent = JSON.parse(props().getProperty(rk) || "[]"); } catch (e) {}
+      sent = sent.filter(t => now - t < 60 * 60 * 1000);
+      if (sent.length >= MAX_MAGIC_PER_HOUR) throw new Error("Trop de demandes pour cette adresse. Réessaie dans une heure.");
+      const token = "m." + rand(40);
+      props().setProperty(magicKey(token), JSON.stringify({ e: email, x: now + MAGIC_MINUTES * 60000 }));
+      sent.push(now); props().setProperty(rk, JSON.stringify(sent));
+      mail(email, "Ton lien de connexion à Hotte Surprise", "Connexion à Hotte Surprise",
+        "<p>Clique sur ce bouton pour te connecter. Le lien marche une seule fois, pendant " + MAGIC_MINUTES + " minutes.</p>" +
+        button(SITE + "#login=" + token, "Me connecter") +
+        "<p style=\"color:#7a6f69;font-size:13px\">Tu n'as rien demandé ? Ignore simplement cet email.</p>");
+      return { ok: true };
+    });
+  },
+  magicLogin(req) {
+    const t = String(req.token || "");
+    if (t.indexOf("m.") !== 0) throw new Error("Lien de connexion invalide.");
+    return withLock(() => {
+      const k = magicKey(t), m = JSON.parse(props().getProperty(k) || "null");
+      props().deleteProperty(k);  // usage unique
+      if (!m || m.x < Date.now()) throw new Error("Ce lien de connexion a expiré ou a déjà servi. Demande-en un nouveau.");
+      return newSession(m.e);
+    });
   },
   logout(req) {
     if (String(req.session || "").indexOf("s.") === 0) props().deleteProperty(sessKey(req.session));
@@ -570,7 +605,8 @@ function sendReminders() {
   const today = new Date().toISOString().slice(0, 10), all = props().getProperties();
   Object.keys(all).forEach(k => {
     if (/^dayu?_/.test(k) && k.indexOf(today) < 0) props().deleteProperty(k);
-    if (k.indexOf("sess_") === 0) { try { if (JSON.parse(all[k]).x < Date.now()) props().deleteProperty(k); } catch (e) { props().deleteProperty(k); } }
+    if (k.indexOf("mlr_") === 0) { try { if (Math.max.apply(null, JSON.parse(all[k]).concat([0])) < Date.now() - 3600000) props().deleteProperty(k); } catch (e) { props().deleteProperty(k); } }
+    if (k.indexOf("sess_") === 0 || k.indexOf("magic_") === 0) { try { if (JSON.parse(all[k]).x < Date.now()) props().deleteProperty(k); } catch (e) { props().deleteProperty(k); } }
   });
   allEvents().forEach(ev => {
     if (!ev.date || ev.reminded || !/^\d{4}-\d{2}-\d{2}$/.test(ev.date)) return;

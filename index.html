@@ -534,7 +534,10 @@ function renderHome(){
     <div class="card">
       <h2>🎄 Créer un Secret Santa</h2>
       <p class="muted" style="margin-top:0">Jusqu'à ${MAX_PEOPLE} participants par Secret Santa.</p>
-      ${needLogin ? `<p>Connecte-toi avec ton compte Google pour créer un Secret Santa et retrouver les tiens sur tous tes appareils.</p><div id="gbtn" style="display:flex;justify-content:center;min-height:44px"></div>` : ""}
+      ${needLogin ? `<p>Connecte-toi pour créer un Secret Santa et retrouver les tiens sur tous tes appareils.</p><div id="gbtn" style="display:flex;justify-content:center;min-height:44px"></div>
+      <p class="muted" style="text-align:center;margin:14px 0 8px">ou, sans compte Google (iCloud, Hotmail…), reçois un lien de connexion par email :</p>
+      <form id="magic" class="row"><input id="memail" type="email" placeholder="ton@email.fr" required autocomplete="email"><button class="primary">Recevoir le lien</button></form>
+      <p id="magicMsg" class="ok hidden"></p>` : ""}
       ${g ? `<p class="muted">Connecté·e : <strong>${esc(g.email)}</strong> · <a href="#" id="logout">se déconnecter</a></p>` : ""}
       <form id="create"${needLogin ? ' class="hidden"' : ""}>
         <label>Nom</label><input id="name" placeholder="Noël en famille 2026" required>
@@ -560,6 +563,15 @@ function renderHome(){
     });
   };
   if (needLogin) googleButton(document.getElementById("gbtn"), renderHome);
+  const magic = document.getElementById("magic");
+  if (magic) magic.onsubmit = e => {
+    e.preventDefault();
+    busy(magic.querySelector("button"), async () => {
+      const email = document.getElementById("memail").value.trim();
+      await api("magicLink", { email });
+      const m = document.getElementById("magicMsg"); m.textContent = `📧 C'est envoyé ! Ouvre l'email reçu sur ${email} et clique sur « Me connecter » (pense aux spams). Le lien est valable 15 minutes.`; m.classList.remove("hidden");
+    });
+  };
   document.getElementById("homeCode").onsubmit = e => {
     e.preventDefault();
     busy(e.target.querySelector("button"), async () => {
@@ -874,12 +886,22 @@ async function renderSuper(){
   });
 }
 
+// Arrivée par le lien magique reçu par email : on ouvre une session de 30 jours puis on revient à l'accueil
+async function magicLogin(token){
+  loading();
+  try {
+    const s = await api("magicLogin", { token });
+    try { localStorage.setItem("hotte-google", JSON.stringify({ token: s.session, email: s.email, exp: s.exp })); } catch(e){}
+    history.replaceState(null, "", location.pathname + location.search); route();
+  } catch(e){ fail(e.message); }
+}
 function route(){
   document.body.classList.remove("ready");
   document.getElementById("homeBtn").classList.toggle("hidden", location.hash.length <= 1);
   window.scrollTo(0, 0);
   const h = new URLSearchParams(location.hash.slice(1));
   if (location.hash === "#super") return renderSuper();
+  if (h.get("login")) return magicLogin(h.get("login"));
   if (h.get("admin")) { const [id, token] = h.get("admin").split("."); return renderAdmin(id, token); }
   if (h.get("e")) return renderEvent(h.get("e"), h.get("t"));
   renderHome();
