@@ -328,13 +328,14 @@ const ACTIONS = {
     // Le code secret seul suffit (il est unique dans ce Secret Santa) ; connecté avec Google, l'email de l'inscription suffit
     const p = findParticipant(ev, req, true);
     if (ev.status !== "drawn") return { waiting: true, name: p.name, event: publicEvent(ev), mw: getWish(ev.id, p.id) };
-    if (req.peek) return { drawn: true };  // simple vérification du lien, sans afficher ni marquer le tirage comme vu
+    if (req.peek) return { drawn: true, seen: !!p.seen };  // simple vérification du lien, sans afficher ni marquer le tirage comme vu
     const r = ev.participants.find(x => x.id === ev.assign[p.id]);
     if (!p.seen) {
       // Note que la personne a vu son tirage (pour que l'organisateur sache qui relancer)
       try { withLock(() => { const fresh = load(ev.id), me = fresh.participants.find(x => x.id === p.id); if (me && !me.seen) { me.seen = new Date().toISOString(); store(fresh); } }); } catch (e) {}
     }
-    return { g: p.name, r: r.name, b: ev.budget, d: ev.date, e: ev.name, w: getWish(ev.id, r.id), mw: getWish(ev.id, p.id) };
+    // again : déjà ouvert une fois (sur n'importe quel appareil), le site n'affiche plus l'animation
+    return { g: p.name, r: r.name, b: ev.budget, d: ev.date, e: ev.name, w: getWish(ev.id, r.id), mw: getWish(ev.id, p.id), again: !!p.seen };
   },
 
   // Page d'accueil, connecté avec Google : les Secret Santa où l'on est inscrit avec cet email, et sa liste d'envies

@@ -356,6 +356,11 @@ function renderReveal(data, auth){
   };
   document.getElementById("btn").onclick = open;
   document.getElementById("box").onclick = open;
+  if (data.again) {  // déjà ouvert une fois : on montre directement le tirage, sans l'animation
+    document.getElementById("hide").classList.add("hidden");
+    document.getElementById("show").classList.remove("hidden");
+    const mw = document.getElementById("mywish"); if (mw) mw.classList.remove("hidden");
+  }
   document.getElementById("box").onkeydown = e => { if (e.key === "Enter" || e.key === " ") open(); };
 }
 
@@ -712,7 +717,7 @@ async function renderEvent(id, token){
   const autoAuth = saved ? { eventId:id, token: saved } : gs ? { eventId:id, idToken: gs.token } : null;
   if (autoAuth) {
     // Avant le tirage on rouvre directement sa liste ; après, on propose d'ouvrir le cadeau (le tirage s'affiche alors comme vu)
-    try { const r = await api("reveal", Object.assign({ peek: true }, autoAuth)); if (r.waiting) var waitingWish = r, waitAuth = autoAuth; else var savedDrawn = true; }
+    try { const r = await api("reveal", Object.assign({ peek: true }, autoAuth)); if (r.waiting) var waitingWish = r, waitAuth = autoAuth; else if (r.seen) return renderReveal(await api("reveal", autoAuth), autoAuth); else var savedDrawn = true; }
     catch(e){ if (saved) rememberMe(id, null); }
   }
   if (token && !waitingWish) {
