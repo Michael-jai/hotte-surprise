@@ -238,14 +238,16 @@ function wishHtml(w){
   }).join("")}</ul>`;
 }
 // Recherche Amazon depuis l'éditeur : ouvre les résultats dans un nouvel onglet, on revient coller le lien
-function amazonSearch(input){ const q = input.value.trim(); if (q) window.open(amazonUrl(q), "_blank", "noopener"); }
+// Budget du Secret Santa affiché : la recherche est filtrée automatiquement au prix maximum
+let searchBudget = "";
+function amazonSearch(input){ const q = input.value.trim(); if (q) window.open(amazonUrl(q, budgetMax(searchBudget)), "_blank", "noopener"); }
 document.addEventListener("click", e => { const b = e.target.closest(".ago"); if (b) amazonSearch(b.parentNode.querySelector(".aq")); });
 document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.classList && e.target.classList.contains("aq")) { e.preventDefault(); amazonSearch(e.target); } });
 // Éditeur ligne par ligne : une envie par ligne, une ligne vide apparaît dès qu'on remplit la dernière
 const MAX_WISH_LINES = 15;
 function wishEditor(id, text){
   const lines = String(text || "").split(/\n+/).map(x => x.trim()).filter(Boolean);
-  return `<div class="asearch"><input class="aq" placeholder="Chercher un produit sur Amazon…" autocomplete="off" enterkeyhint="search"><button type="button" class="ago">🔍 Chercher</button></div>
+  return `<div class="asearch"><input class="aq" placeholder="Chercher sur Amazon${budgetMax(searchBudget) ? ` (max ${budgetMax(searchBudget)} €)` : ""}…" autocomplete="off" enterkeyhint="search"><button type="button" class="ago">🔍 Chercher</button></div>
     <div class="wlines" id="${id}">${lines.concat([""]).map(wishLine).join("")}</div>
     <p class="muted" style="margin:6px 0 0;font-size:.82rem">Écris une idée, ou cherche sur Amazon et colle le <strong>lien du produit</strong> (la photo s'affiche). Autre site : ajoute aussi le lien d'une image.</p>`;
 }
@@ -325,6 +327,7 @@ function amazonIdeas(wish, budget){
 // ---------- Mode révélation ----------
 function renderReveal(data, auth){
   document.title = "Ton Secret Santa";
+  searchBudget = data.b || "";
   const app = document.getElementById("app");
   app.innerHTML = `
     <img class="hero small" src="assets/hero.jpg" alt="" onerror="this.remove()">
@@ -583,6 +586,8 @@ async function refreshWishes(g){
     box.querySelectorAll(".wishrow").forEach(r => { r.classList.add("hidden"); r.innerHTML = ""; });
     box.querySelectorAll("[data-mw]").forEach(b => b.classList.remove("hidden"));
     const x = list[i], row = document.getElementById("mwRow" + i);
+    searchBudget = x.budget || "";
+    if (x.budget == null) api("getEvent", { eventId: x.eventId }).then(ev => { x.budget = ev.budget || ""; if (x.budget && row.isConnected && !row.classList.contains("hidden")) { searchBudget = x.budget; const q = row.querySelector(".aq"); if (q) q.placeholder = `Chercher sur Amazon (max ${budgetMax(x.budget)} €)…`; } }).catch(() => {});
     row.innerHTML = `<div style="width:100%">${wishEditor("wishEdit", x.mw)}<div class="wish-foot"><span></span><button class="primary" id="wishSave">Valider</button></div><p id="wishMsg" class="ok hidden"></p></div>`;
     row.classList.remove("hidden"); box.querySelector(`[data-mw="${i}"]`).classList.add("hidden");
     bindWish({ eventId: x.eventId, idToken: g.token }, mw => { x.mw = mw; });
@@ -609,6 +614,7 @@ async function renderAdmin(id, token, data){
   setTimeout(() => document.body.classList.add("ready"), 600);
   if (!data) { loading(); try { data = await api("adminGet", adminAuth(id, token)); } catch(e){ return fail(e.message); } }
   document.title = data.name + " · Organisateur";
+  searchBudget = data.budget || "";
   const joinUrl = baseUrl() + "#e=" + id;
   const invite = `🎄 Tu es invité·e au Secret Santa « ${data.name} » ! Inscris-toi ici avec ton email : ${joinUrl}`;
   const byId = Object.fromEntries(data.participants.map(p => [p.id, p.name]));
@@ -743,6 +749,7 @@ async function renderEvent(id, token){
   let ev;
   try { ev = await api("getEvent", { eventId:id }); } catch(e){ return fail(e.message); }
   document.title = ev.name + " · Secret Santa";
+  searchBudget = ev.budget || "";
   const open = ev.status === "open";
   app().innerHTML = `
     ${hero(true)}
