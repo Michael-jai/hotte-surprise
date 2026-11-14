@@ -2,7 +2,7 @@
 // Déploiement : Déployer > Nouveau déploiement > Application Web
 //   Exécuter en tant que : Moi · Qui a accès : Tout le monde
 // FIN DU FICHIER : la dernière ligne est « // ===== FIN ===== ».
-const SITE = "https://michael-jai.github.io/hotte-surprise/";
+const SITE = "https://hottesurprise.fr/";
 const CODE_DIGITS = 6;          // longueur du code secret envoyé à chaque participant
 const MAX_PARTICIPANTS = 40;     // limite liée à la taille de stockage (9 Ko par Secret Santa)
 const MAX_EVENTS_PER_DAY = 10;   // anti-abus : créations de Secret Santa par jour et par compte Google
