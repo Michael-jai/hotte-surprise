@@ -249,7 +249,7 @@ function wishEditor(id, text){
   const lines = String(text || "").split(/\n+/).map(x => x.trim()).filter(Boolean);
   return `<div class="asearch"><input class="aq" placeholder="Chercher sur Amazon${budgetMax(searchBudget) ? ` (max ${budgetMax(searchBudget)} €)` : ""}…" autocomplete="off" enterkeyhint="search"><button type="button" class="ago">🔍 Chercher</button></div>
     <div class="wlines" id="${id}">${lines.concat([""]).map(wishLine).join("")}</div>
-    <p class="muted" style="margin:6px 0 0;font-size:.82rem">Écris une idée, ou cherche sur Amazon et colle le <strong>lien du produit</strong> (la photo s'affiche). Autre site : ajoute aussi le lien d'une image.</p>`;
+    <p class="muted" style="margin:6px 0 0;font-size:.82rem">Écris une idée, ou cherche sur Amazon et colle le <strong>lien du produit</strong>.</p>`;
 }
 function wishLine(v){
   return `<div class="wline"><span class="wthumb"></span><input class="winput" value="${esc(v)}" maxlength="300" placeholder="Ex. : casque audio, ou colle un lien Amazon" autocomplete="off"><button type="button" class="wdel" aria-label="Retirer cette envie">✕</button></div>`;
