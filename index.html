@@ -503,8 +503,11 @@ function renderHome(){
     <div id="mine"></div>
     <div class="card">
       <h2>📝 Modifier ma liste d'envies</h2>
-      <p class="muted" style="margin-top:0">Tu participes à un Secret Santa ? Entre le code secret reçu par email, pas besoin de compte.</p>
-      <form id="homeCode" class="row"><input id="hcode" inputmode="numeric" pattern="[0-9 ]*" placeholder="Ton code" required autocomplete="one-time-code" style="font-size:1.2rem;letter-spacing:.3em;text-align:center"><button class="primary">Ouvrir</button></form>
+      <div id="gWishes"></div>
+      <div id="codeWish"${g ? ' class="hidden"' : ""}>
+        <p class="muted" style="margin-top:0">Tu participes à un Secret Santa ? Entre le code secret reçu par email, pas besoin de compte.</p>
+        <form id="homeCode" class="row"><input id="hcode" inputmode="numeric" pattern="[0-9 ]*" placeholder="Ton code" required autocomplete="one-time-code" style="font-size:1.2rem;letter-spacing:.3em;text-align:center"><button class="primary">Valider</button></form>
+      </div>
     </div>
     <div class="card">
       <h2>🎄 Créer un Secret Santa</h2>
@@ -544,9 +547,31 @@ function renderHome(){
   };
   const lo = document.getElementById("logout");
   if (lo) lo.onclick = e => { e.preventDefault(); googleLogout(); renderHome(); };
-  if (g) refreshMine(g);
+  if (g) { refreshMine(g); refreshWishes(g); }
 }
 // « Mes Secret Santa » : uniquement ceux du compte Google connecté, lus sur le serveur
+// Connecté avec Google : ses inscriptions (même email) sont retrouvées sans code
+async function refreshWishes(g){
+  const box = document.getElementById("gWishes"), codeBox = document.getElementById("codeWish");
+  if (!box) return;
+  box.innerHTML = `<p class="muted" style="margin-top:0">Recherche de tes inscriptions…</p>`;
+  let list;
+  try { list = (await api("myWishes", { idToken: g.token })).list; } catch(e){ box.innerHTML = ""; codeBox.classList.remove("hidden"); return; }
+  if (!list.length) { box.innerHTML = `<p class="muted" style="margin-top:0">Aucune inscription trouvée avec ${esc(g.email)}.</p>`; codeBox.classList.remove("hidden"); return; }
+  box.innerHTML = `<ul class="list" style="margin-top:0">${list.map((x, i) => `<li><span class="pname">${esc(x.event)} <span class="muted">${esc(x.name)}</span></span><button class="primary" data-mw="${i}">✏️ Modifier ma liste</button></li><li class="wishrow hidden" id="mwRow${i}"></li>`).join("")}</ul>
+    <p class="muted" style="margin:8px 0 0;font-size:.85rem">Inscrit avec un autre email ? <a href="#" id="showCode">Entre ton code</a></p>`;
+  document.getElementById("showCode").onclick = e => { e.preventDefault(); codeBox.classList.remove("hidden"); e.target.parentNode.remove(); };
+  const open = i => {
+    box.querySelectorAll(".wishrow").forEach(r => { r.classList.add("hidden"); r.innerHTML = ""; });
+    box.querySelectorAll("[data-mw]").forEach(b => b.classList.remove("hidden"));
+    const x = list[i], row = document.getElementById("mwRow" + i);
+    row.innerHTML = `<div style="width:100%">${wishEditor("wishEdit", x.mw)}<div class="wish-foot"><span></span><button class="primary" id="wishSave">Valider</button></div><p id="wishMsg" class="ok hidden"></p></div>`;
+    row.classList.remove("hidden"); box.querySelector(`[data-mw="${i}"]`).classList.add("hidden");
+    bindWish({ eventId: x.eventId, idToken: g.token }, mw => { x.mw = mw; });
+  };
+  box.querySelectorAll("[data-mw]").forEach(b => b.onclick = () => open(+b.dataset.mw));
+  if (list.length === 1) open(0);
+}
 async function refreshMine(g){
   try {
     const r = await api("myEvents", { idToken: g.token }), box = document.getElementById("mine");

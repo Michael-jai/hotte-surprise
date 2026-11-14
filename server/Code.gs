@@ -132,9 +132,14 @@ function deleteEventData(evId) {
   props().deleteProperty("fail_" + evId);
 }
 // Retrouve un participant par son lien perso (token) ou son code secret (avec anti-devinette)
-function findParticipant(ev, req) {
+function findParticipant(ev, req, allowGoogle) {
   let p;
-  if (req.token) p = ev.participants.find(x => x.token && x.token === req.token);
+  if (allowGoogle && req.idToken && !req.token && !req.code) {
+    // Connecté avec Google : on retrouve l'inscription faite avec le même email
+    const email = googleEmail(req.idToken);
+    p = ev.participants.find(x => x.email && normEmail(x.email) === email);
+    if (!p) throw new Error("Aucune inscription avec ton compte Google dans ce Secret Santa.");
+  } else if (req.token) p = ev.participants.find(x => x.token && x.token === req.token);
   else {
     if (tooManyFailures(ev.id, false)) throw new Error("Trop d'essais. Réessaie dans une heure.");
     const code = clean(req.code, 12).replace(/\D/g, ""), h = hash(ev.id + ":" + code);
@@ -332,6 +337,16 @@ const ACTIONS = {
     return { g: p.name, r: r.name, b: ev.budget, d: ev.date, e: ev.name, w: getWish(ev.id, r.id), mw: getWish(ev.id, p.id) };
   },
 
+  // Page d'accueil, connecté avec Google : les Secret Santa où l'on est inscrit avec cet email, et sa liste d'envies
+  myWishes(req) {
+    const email = googleEmail(req.idToken), list = [];
+    allEvents().forEach(ev => {
+      const p = ev.participants.find(x => x.email && normEmail(x.email) === email);
+      if (p) list.push({ eventId: ev.id, event: ev.name, name: p.name, drawn: ev.status === "drawn", mw: getWish(ev.id, p.id) });
+    });
+    return { list };
+  },
+
   // Page d'accueil : retrouver son Secret Santa avec son seul code secret (pour modifier sa liste d'envies)
   findByCode(req) {
     const now = Date.now(), key = "gfail";
@@ -368,7 +383,7 @@ const ACTIONS = {
   // Chaque participant modifie sa liste d'envies (avec son lien perso ou son code)
   updateWish(req) {
     const ev = load(req.eventId);
-    const p = findParticipant(ev, req);
+    const p = findParticipant(ev, req, true);
     return { mw: setWish(ev.id, p.id, req.wish) };
   },
 
