@@ -1,0 +1,4 @@
+<!doctype html><meta charset="utf-8"><title>Envoi</title><body style="font-family:sans-serif">Envoi du fichier…<script>
+(async()=>{const f=new URLSearchParams(location.search).get('f');if(!/^[\w.-]+$/.test(f)||!window.opener)return document.body.textContent='Rien à envoyer.';
+const r=await fetch(f);const b=await r.arrayBuffer();window.opener.postMessage({hsFile:f,type:r.headers.get('content-type'),buf:b},'https://www.tiktok.com',[b]);document.body.textContent='Envoyé ✔';setTimeout(()=>window.close(),800);})();
+</script>
