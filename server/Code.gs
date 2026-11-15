@@ -449,7 +449,14 @@ const ACTIONS = {
 
   superList(req) {
     checkSuper(req.superKey);
-    return { events: allEvents().map(ev => Object.assign(publicEvent(ev), { orgEmail: ev.orgEmail, created: ev.created })) };
+    const all = props().getProperties(), wishes = {};
+    Object.keys(all).forEach(k => { if (k.indexOf("wish_") === 0) { const id = k.slice(5).split("_")[0]; wishes[id] = (wishes[id] || 0) + 1; } });
+    return { events: allEvents().map(ev => Object.assign(publicEvent(ev), {
+      orgEmail: ev.orgEmail, created: ev.created,
+      wishes: wishes[ev.id] || 0,
+      opened: ev.participants.filter(p => p.seen).length,
+      exclusions: (ev.exclusions || []).length
+    })) };
   },
 
   // L'organisateur (ou le super-admin) supprime définitivement son Secret Santa

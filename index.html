@@ -158,6 +158,7 @@ ul.list li.mine a span:first-child{text-decoration:underline}
 @keyframes shake{0%,70%,100%{transform:rotate(0)}75%{transform:rotate(-6deg)}80%{transform:rotate(6deg)}85%{transform:rotate(-4deg)}90%{transform:rotate(3deg)}}
 .confetti{position:fixed;top:-12px;width:10px;height:14px;z-index:5;pointer-events:none;animation:conf linear forwards}
 @keyframes conf{to{transform:translate(var(--dx),110vh) rotate(var(--rot))}}
+.sstats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;text-align:center}.sstat{background:rgba(196,30,58,.07);border-radius:12px;padding:10px 4px}.sstat b{display:block;font-size:1.6em;color:#c41e3a}.sstat span{font-size:.8em;opacity:.8}.sfilt{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}.sfilt button{padding:6px 10px;font-size:.85em}
 </style>
 </head>
 <body>
@@ -871,19 +872,43 @@ async function renderSuper(){
   let list;
   try { list = (await api("superList", { superKey: key })).events; }
   catch(e){ try { sessionStorage.removeItem("hotte-super"); } catch(err){} return fail(e.message); }
+  const fr = d => { try { return new Date(d).toLocaleDateString("fr-FR"); } catch(e){ return ""; } };
+  const tot = list.reduce((a, ev) => a + (ev.count || 0), 0), drawn = list.filter(ev => ev.status === "drawn").length;
+  const orgs = new Set(list.map(ev => ev.orgEmail)).size;
+  const today = new Date().toISOString().slice(0, 10), week = Date.now() - 7 * 86400000;
+  const recent = list.filter(ev => ev.created && new Date(ev.created).getTime() > week).length;
+  const stat = (n, l) => `<div class="sstat"><b>${n}</b><span>${l}</span></div>`;
   app().innerHTML = `${hero(true)}
-    <div class="title"><h1>Super-admin</h1><p class="sub">${list.length} Secret Santa · tu peux tout gérer, mais pas voir les tirages</p></div>
-    <div class="card"><ul class="list">${list.length ? list.map(ev => `
-      <li class="send" data-row="${esc(ev.id)}"><div><strong>${esc(ev.name)}</strong> <span class="muted">${ev.status === "drawn" ? "🎉 tirage fait" : "📝 inscriptions ouvertes"} · ${ev.count} inscrit${ev.count>1?"s":""}</span><br>
-        <span class="muted">${esc(ev.orgEmail)}${ev.created ? " · créé le " + esc(new Date(ev.created).toLocaleDateString("fr-FR")) : ""}</span></div>
-        <div class="actions"><a class="btn sms" href="#admin=${esc(ev.id)}.super">Gérer</a><a class="btn wa" href="#e=${esc(ev.id)}" target="_blank" rel="noopener">Page publique</a><button data-sdel="${esc(ev.id)}">🗑 Supprimer</button></div></li>`).join("") : `<li class="muted">Aucun Secret Santa pour l'instant.</li>`}</ul></div>
+    <div class="title"><h1>Super-admin</h1><p class="sub">Vue de tous les Secret Santa · tu peux tout gérer, mais pas voir les tirages</p></div>
+    <div class="card"><div class="sstats">${stat(list.length, "Secret Santa")}${stat(tot, "participants")}${stat(drawn, "tirages faits")}${stat(list.length - drawn, "en inscription")}${stat(orgs, "organisateurs")}${stat(recent, "créés cette semaine")}</div></div>
+    <div class="card">
+      <input id="sq" type="search" placeholder="🔎 Chercher un nom ou un email…" style="width:100%;margin-bottom:10px">
+      <div class="sfilt"><button data-f="all" class="primary">Tous</button><button data-f="open">📝 Inscriptions</button><button data-f="drawn">🎉 Tirés</button><button data-f="past">⏳ Date passée</button></div>
+      <ul class="list" id="slist"></ul></div>
     <p style="text-align:center"><button id="logout">Se déconnecter</button></p>
     <p id="msg" class="hidden"></p>`;
-  document.getElementById("logout").onclick = () => { try { sessionStorage.removeItem("hotte-super"); } catch(e){} renderSuper(); };
-  app().querySelectorAll("[data-sdel]").forEach(b => b.onclick = () => {
-    if (b.dataset.armed) return busy(b, async () => { await api("superDelete", { superKey: key, eventId: b.dataset.sdel }); renderSuper(); });
-    b.dataset.armed = "1"; b.textContent = "Confirmer la suppression ?"; b.classList.add("primary");
+  let filt = "all";
+  const row = ev => `
+      <li class="send" data-row="${esc(ev.id)}"><div><strong>${esc(ev.name)}</strong> <span class="muted">${ev.status === "drawn" ? "🎉 tirage fait" : "📝 inscriptions ouvertes"}</span><br>
+        <span class="muted">👥 ${ev.count} inscrit${ev.count>1?"s":""}${ev.wishes != null ? ` · 📝 ${ev.wishes} liste${ev.wishes>1?"s":""} d'envies` : ""}${ev.status === "drawn" && ev.opened != null ? ` · 🎁 ${ev.opened}/${ev.count} cadeau${ev.opened>1?"x":""} ouvert${ev.opened>1?"s":""}` : ""}${ev.exclusions ? ` · 🚫 ${ev.exclusions} exclusion${ev.exclusions>1?"s":""}` : ""}</span><br>
+        <span class="muted">${ev.date ? "📅 échange le " + esc(fr(ev.date)) + " · " : ""}${ev.budget ? "💶 " + esc(ev.budget) + " · " : ""}✉️ ${esc(ev.orgEmail)}${ev.created ? " · créé le " + esc(fr(ev.created)) : ""}</span></div>
+        <div class="actions"><a class="btn sms" href="#admin=${esc(ev.id)}.super">Gérer</a><a class="btn wa" href="#e=${esc(ev.id)}" target="_blank" rel="noopener">Page publique</a><button data-sdel="${esc(ev.id)}">🗑 Supprimer</button></div></li>`;
+  const draw = () => {
+    const q = (document.getElementById("sq").value || "").toLowerCase().trim();
+    const shown = list.filter(ev => (filt === "all" || (filt === "drawn" && ev.status === "drawn") || (filt === "open" && ev.status !== "drawn") || (filt === "past" && ev.date && ev.date < today))
+      && (!q || String(ev.name).toLowerCase().includes(q) || String(ev.orgEmail).toLowerCase().includes(q)));
+    document.getElementById("slist").innerHTML = shown.length ? shown.map(row).join("") : `<li class="muted">${list.length ? "Aucun résultat." : "Aucun Secret Santa pour l'instant."}</li>`;
+    app().querySelectorAll("[data-sdel]").forEach(b => b.onclick = () => {
+      if (b.dataset.armed) return busy(b, async () => { await api("superDelete", { superKey: key, eventId: b.dataset.sdel }); renderSuper(); });
+      b.dataset.armed = "1"; b.textContent = "Confirmer la suppression ?"; b.classList.add("primary");
+    });
+  };
+  document.getElementById("sq").oninput = draw;
+  app().querySelectorAll("[data-f]").forEach(b => b.onclick = () => {
+    filt = b.dataset.f; app().querySelectorAll("[data-f]").forEach(x => x.classList.toggle("primary", x === b)); draw();
   });
+  draw();
+  document.getElementById("logout").onclick = () => { try { sessionStorage.removeItem("hotte-super"); } catch(e){} renderSuper(); };
 }
 
 // Arrivée par le lien magique reçu par email : on ouvre une session de 30 jours puis on revient à l'accueil
