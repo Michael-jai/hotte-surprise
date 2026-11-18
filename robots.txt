@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /server/
+Disallow: /promo/
+
+Sitemap: https://hottesurprise.fr/sitemap.xml
